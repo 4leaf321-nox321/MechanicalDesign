@@ -1,0 +1,57 @@
+# === User-specified excludes ===
+version*.zip
+backup/
+NVIDIA Corporation/
+**/NVIDIA Corporation/
+
+# === Secrets / env ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# === Python (backend) ===
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+instance/
+*.sqlite3
+*.db
+
+# === Node / Vite (frontend) ===
+node_modules/
+dist/
+build/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# === Uploads / runtime artifacts ===
+uploads/
+backend/uploads/
+*.tmp
+
+# === OS / Editor ===
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# === Claude ===
+.claude/
