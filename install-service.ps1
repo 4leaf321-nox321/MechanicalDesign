@@ -1,4 +1,4 @@
-# Mechanical Design - Install as Windows Service (NSSM)
+﻿# Mechanical Design - Install as Windows Service (NSSM)
 #
 # NSSM(Non-Sucking Service Manager)을 이용해 백엔드를 Windows 서비스로 등록합니다.
 # 부팅 시 자동 시작, 크래시 시 자동 재시작이 설정됩니다.

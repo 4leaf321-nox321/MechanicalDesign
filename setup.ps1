@@ -1,4 +1,4 @@
-# Mechanical Design - First-time Setup (Windows)
+﻿# Mechanical Design - First-time Setup (Windows)
 #
 # Usage:
 #   .\setup.ps1

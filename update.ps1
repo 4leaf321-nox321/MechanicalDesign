@@ -1,4 +1,4 @@
-# Mechanical Design - Update Production (Windows)
+﻿# Mechanical Design - Update Production (Windows)
 #
 # 운영 서버에서 새 버전을 받아 적용하는 스크립트.
 # git pull → pip 업데이트 → 마이그레이션 → 프론트 리빌드 → (선택) NSSM 서비스 재시작
