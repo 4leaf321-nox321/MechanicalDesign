@@ -34,6 +34,7 @@
 ├── setup.ps1                      # 최초 설치 자동화
 ├── update.ps1                     # 운영 서버 업데이트 자동화
 ├── install-service.ps1            # NSSM Windows 서비스 등록
+├── dev.ps1                        # 개발 모드 (백엔드 + Vite dev server 동시 기동)
 └── 배포방법.md                    # 신규 서버 배포 전체 가이드
 ```
 
@@ -94,12 +95,20 @@ cd MechanicalDesign
 
 ### 개발 모드 (HMR)
 
-프론트엔드를 별도 dev 서버로 띄우려면:
+`dev.ps1` 한 번으로 백엔드(5174) + Vite dev server(5173) 두 창이 동시에 띄워집니다:
 
 ```powershell
-cd frontend
-npm run dev    # http://localhost:5173, Vite proxy로 백엔드 호출
+.\dev.ps1                    # 두 창 띄우기
+.\dev.ps1 -OpenBrowser       # 브라우저까지 자동
+.\dev.ps1 -StopService       # 운영 서비스가 켜져있으면 자동 중지
 ```
+
+브라우저는 **<http://localhost:5173>** 으로 접속 (5174 아님). Vite 가 `/api/*` 를 자동으로 백엔드(5174)로 프록시합니다.
+
+- `.jsx`/`.css` 변경 → **즉시 HMR 반영** (새로고침 불필요)
+- `.py` 변경 → 백엔드 창에서 Ctrl+C 후 `python run.py` 재실행
+
+> `backend\.env` 의 `FLASK_ENV` 가 `development` 여야 Flask 개발 서버로 뜹니다.
 
 ### 개발 모드 (HMR)
 
