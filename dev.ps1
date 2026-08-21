@@ -1,7 +1,7 @@
 ﻿# Mechanical Design - Dev Mode Launcher (Windows)
 #
 # 두 개의 PowerShell 창을 띄워 백엔드 + Vite dev server를 동시에 실행합니다.
-# 브라우저는 http://localhost:5173 으로 접속하세요 (Vite proxy가 /api/* 를 5174로 포워딩).
+# 브라우저는 http://localhost:5175 으로 접속하세요 (Vite proxy가 /api/* 를 5176로 포워딩).
 #
 # Usage:
 #   .\dev.ps1                # 백엔드 + 프론트 dev server 실행
@@ -70,7 +70,7 @@ if (-not $FrontendOnly) {
         } else {
             Write-Host ""
             Write-Host "[경고] Windows 서비스 '$ServiceName' 가 Running 상태입니다." -ForegroundColor Red
-            Write-Host "       포트 5174 가 점유되어 백엔드 dev 기동이 실패합니다." -ForegroundColor Red
+            Write-Host "       포트 5176 가 점유되어 백엔드 dev 기동이 실패합니다." -ForegroundColor Red
             Write-Host "       해결:" -ForegroundColor Yellow
             Write-Host "         Stop-Service $ServiceName" -ForegroundColor Yellow
             Write-Host "       또는 이 스크립트를 -StopService 옵션으로 재실행." -ForegroundColor Yellow
@@ -81,13 +81,13 @@ if (-not $FrontendOnly) {
 
 # === 2. 백엔드 창 띄우기 ===
 if (-not $FrontendOnly) {
-    Write-Step "백엔드 창 띄우기 (포트 5174)"
+    Write-Step "백엔드 창 띄우기 (포트 5176)"
     $backendCmd = @"
-`$Host.UI.RawUI.WindowTitle = 'MechD Backend (5174)'
+`$Host.UI.RawUI.WindowTitle = 'MechD Backend (5176)'
 Set-Location '$Backend'
 & '$Backend\venv\Scripts\Activate.ps1'
 Write-Host '--- Backend (Flask dev server) ---' -ForegroundColor Cyan
-Write-Host '종료: Ctrl+C, 코드 변경 시 수동 재시작 필요' -ForegroundColor Yellow
+Write-Host '종료: Ctrl+C, .py 를 고치면 자동으로 다시 읽습니다' -ForegroundColor Yellow
 Write-Host ''
 python run.py
 Write-Host ''
@@ -100,12 +100,12 @@ Write-Host '백엔드 종료됨. 창을 닫으려면 아무 키나 누르세요.
 
 # === 3. 프론트 dev server 창 띄우기 ===
 if (-not $BackendOnly) {
-    Write-Step "프론트엔드 dev server 창 띄우기 (포트 5173)"
+    Write-Step "프론트엔드 dev server 창 띄우기 (포트 5175)"
     $frontendCmd = @"
-`$Host.UI.RawUI.WindowTitle = 'MechD Frontend (5173, Vite)'
+`$Host.UI.RawUI.WindowTitle = 'MechD Frontend (5175, Vite)'
 Set-Location '$Frontend'
 Write-Host '--- Vite Dev Server (HMR) ---' -ForegroundColor Cyan
-Write-Host '종료: Ctrl+C, /api/* 는 자동으로 5174 로 프록시됨' -ForegroundColor Yellow
+Write-Host '종료: Ctrl+C, /api/* 는 자동으로 5176 로 프록시됨' -ForegroundColor Yellow
 Write-Host ''
 npm run dev
 Write-Host ''
@@ -120,7 +120,7 @@ Write-Host '프론트 dev server 종료됨. 창을 닫으려면 아무 키나 �
 if ($OpenBrowser -and -not $BackendOnly) {
     Write-Step "브라우저 열기"
     Start-Sleep -Seconds 3   # Vite dev server 부팅 대기
-    Start-Process "http://localhost:5173"
+    Start-Process "http://localhost:5175"
 }
 
 Write-Host ""
@@ -129,11 +129,11 @@ Write-Host "  Dev 모드 실행됨" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "접속:" -ForegroundColor Yellow
-Write-Host "  http://localhost:5173    ← 여기로 (Vite, HMR 동작)"
-Write-Host "  http://localhost:5174    ← 백엔드 직접 접근용 (dist 비어있을 수 있음)"
+Write-Host "  http://localhost:5175    ← 여기로 (Vite, HMR 동작)"
+Write-Host "  http://localhost:5176    ← 백엔드 직접 접근용 (dist 비어있을 수 있음)"
 Write-Host ""
 Write-Host "팁:" -ForegroundColor Yellow
 Write-Host "  - .jsx/.css 변경 → 즉시 HMR 반영"
-Write-Host "  - .py 변경 → 백엔드 창에서 Ctrl+C 후 python run.py 재실행"
+Write-Host "  - .py 변경 → 백엔드가 자동 재시작 (FLASK_RELOAD=0 으로 끌 수 있음)"
 Write-Host "  - 종료: 각 창에서 Ctrl+C → 창 닫기"
 Write-Host ""

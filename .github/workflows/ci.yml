@@ -26,6 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 계산 로직(수식·표 조회·붙여넣기)을 지킨다. 이 셋은 틀려도 오류가 나지
+      # 않고 값만 조용히 어긋나서, 사람이 눈으로 잡을 수 없다.
+      - name: Test (vitest)
+        run: npm test
+
       - name: Build
         run: npm run build
 
@@ -48,7 +53,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
@@ -60,8 +65,8 @@ jobs:
       - name: Import check (create_app)
         env:
           FLASK_ENV: production
-          SECRET_KEY: ci-test-secret
-          JWT_SECRET_KEY: ci-test-jwt-secret
+          SECRET_KEY: ci-test-secret-0123456789abcdef0123456789
+          JWT_SECRET_KEY: ci-test-jwt-secret-0123456789abcdef0123
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ci_dummy
         run: |
           python -c "from app import create_app; app = create_app(); print('OK:', app.name)"
@@ -94,7 +99,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
@@ -107,9 +112,127 @@ jobs:
         env:
           FLASK_APP: run.py
           FLASK_ENV: production
-          SECRET_KEY: ci-test-secret
-          JWT_SECRET_KEY: ci-test-jwt-secret
+          SECRET_KEY: ci-test-secret-0123456789abcdef0123456789
+          JWT_SECRET_KEY: ci-test-jwt-secret-0123456789abcdef0123
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/mechanicaldesign_ci
         run: |
           flask db upgrade
           flask db current
+
+  backend-tests:
+    # 기호 치환처럼 **조용히 실패하는** 로직을 지키는 자리. 실패해도 그 순간에는
+    # 아무 일도 일어나지 않고, 한참 뒤 계산할 때 엉뚱한 오류로 나타난다.
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements-dev.txt
+
+      # 카드 검증의 시험 계산은 프론트와 같은 자바스크립트 계산기를 node 로
+      # 돌린다. node 가 없으면 그 테스트들이 **조용히 건너뛰어져**, 초록불인데
+      # 정작 검증은 검사되지 않은 상태가 된다.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        env:
+          # conftest 가 없으면 이 DB 를 만든다. 개발 DB 와 반드시 달라야 한다 —
+          # 테스트는 끝날 때 표를 통째로 지운다.
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/mechanicaldesign_test
+        run: python -m pytest tests -q
+
+  mcp-tests:
+    # MCP 는 밖의 AI 가 붙는 문이다. 지키는 것은 **자격 증명이 흐르는 방향** —
+    # 토큰을 안 넘기면 401 이 나서 금방 알지만, 토큰 없이도 통과하게 되면
+    # 아무도 모른다.
+    name: MCP server tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: mcp_server/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+  package-smoke:
+    # 릴리스에서만 패키징을 돌리면, 태그를 민 뒤에야 깨진 것을 안다 — 그러면
+    # 릴리스가 없는 태그가 남는다. 같은 스크립트를 여기서 미리 한 번 돌린다.
+    name: Deploy package (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build deploy package
+        shell: pwsh
+        run: pwsh -File .\scripts\ci\package_deploy.ps1 -Tag 'v0.0.0-ci'
+
+      - name: Inspect package
+        shell: pwsh
+        run: |
+          $zip = Get-Item './deploy/deploy_package.zip'
+          Write-Host ("크기: {0}MB" -f [math]::Round($zip.Length / 1MB, 1))
+          Get-Content './deploy/BUILD_INFO.txt'
+          # 계산기 사본이 zip 안에 들어갔는지 본다. 빠지면 배포는 성공하고
+          # 서버에서 검증만 반쪽으로 돈다.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries.FullName
+          foreach ($needed in 'backend/evaluator/run.mjs', 'backend/evaluator/lib/calcEngine.js') {
+              if ($names -notcontains $needed) { throw "패키지에 $needed 가 없습니다." }
+          }
+          Write-Host '계산기 사본 확인'

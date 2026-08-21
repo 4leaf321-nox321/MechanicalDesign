@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import styled from 'styled-components'
 import { RESERVED_NAMES } from '../../utils/evaluators'
+import { apiFetch } from '../../api/client'
+import { flattenClipboardCells } from '../../utils/clipboard'
+import { MATCH_MODE_LABEL, describeRange, parseRangeHeader } from '../../utils/tableLookup'
+import TableGrid, { shiftColumnIndex } from './TableGrid'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // ============================================
 // Styled Components
@@ -166,106 +169,8 @@ const SegmentBtn = styled.button`
   &:hover { border-color: #3498db; }
 `
 
-const TableWrap = styled.div`
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  overflow: auto;
-  max-height: 300px;
-`
-
-const TableEl = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-`
-
-const Th = styled.th`
-  background: #f1f3f5;
-  border-bottom: 1px solid #ddd;
-  border-right: 1px solid #eee;
-  padding: 0;
-  min-width: 100px;
-  position: relative;
-  &:last-child { border-right: none; }
-`
-
-const HeaderInput = styled.input`
-  width: 100%;
-  padding: 8px 22px 8px 10px;
-  border: none;
-  background: transparent;
-  font-weight: 600;
-  font-size: 0.85rem;
-  outline: none;
-  box-sizing: border-box;
-  cursor: text;
-  &:hover:not(:focus) { background: #eef2f5; }
-  &:focus { background: #e3f2fd; }
-`
-
-const ColRemoveBtn = styled.button`
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #bbb;
-  cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
-  border-radius: 3px;
-  &:hover { background: #fee; color: #e74c3c; }
-`
-
-const Td = styled.td`
-  border-bottom: 1px solid #f0f0f0;
-  border-right: 1px solid #f0f0f0;
-  padding: 0;
-  &:last-child { border-right: none; }
-`
-
-const CellInput = styled.input`
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  font-size: 0.85rem;
-  outline: none;
-  box-sizing: border-box;
-  &:focus { background: #e3f2fd; }
-`
-
-const RowRemoveCell = styled.td`
-  width: 32px;
-  text-align: center;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafbfc;
-`
-
-const RowRemoveBtn = styled.button`
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #bbb;
-  cursor: pointer;
-  font-size: 0.85rem;
-  border-radius: 3px;
-  &:hover { background: #fee; color: #e74c3c; }
-`
-
-const TableActions = styled.div`
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-`
-
+// 표 **위**에 놓는다(요구사항). 라벨 → 버튼 → 표 순서라 표를 눈으로 훑고
+// 내려가지 않아도 버튼이 먼저 보인다.
 const SmallBtn = styled.button`
   padding: 6px 12px;
   border: 1px dashed #bbb;
@@ -276,6 +181,32 @@ const SmallBtn = styled.button`
   cursor: pointer;
   &:hover { border-color: #3498db; color: #3498db; }
 `
+
+// 표 참조 상태 배너. 원본이 있다는 사실과, 여기서 고치면 어디까지 퍼지는지를
+// 항상 눈에 보이게 둔다 — 참조는 편한 만큼 사고도 멀리 퍼진다.
+const RefBanner = styled.div`
+  border: 1px solid ${p => (p.$error ? '#f5c6cb' : '#b3d9f2')};
+  background: ${p => (p.$error ? '#fdecea' : '#eaf4fc')};
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+  color: ${p => (p.$error ? '#a4343a' : '#1565c0')};
+  line-height: 1.5;
+`
+
+const RefBannerRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+`
+
+const RefName = styled.strong`
+  font-weight: 700;
+`
+
 
 const ColumnPickerRow = styled.div`
   display: grid;
@@ -628,6 +559,25 @@ function _normalizeKeys(parsed) {
   return [{ column_index: 0, expression: '', match_mode: 'exact' }]
 }
 
+/**
+ * 템플릿을 참조 상태의 편집기 값으로.
+ *
+ * 열·행은 원본에서 그대로 가져오되 `source_template_id` 를 달아 둔다. 저장할 때
+ * 서버가 이 표시를 보고 사본(열·행)을 떼어 내므로, 이후에는 원본만 바뀌면 된다.
+ * 조회 키와 결과 열은 변수마다 다르니 비운 채로 시작한다.
+ */
+function referenceTableData(tpl) {
+  const source = parseTableData(tpl.data)
+  return {
+    source_template_id: tpl.id,
+    source_name: tpl.name,
+    columns: source.columns,
+    rows: source.rows,
+    result_column_index: 0,
+    keys: [],
+  }
+}
+
 function parseTableData(raw) {
   if (!raw) return { columns: [...DEFAULT_TABLE.columns], rows: DEFAULT_TABLE.rows.map(r => [...r]), result_column_index: 1, keys: [{ ...DEFAULT_TABLE.keys[0] }] }
   try {
@@ -775,26 +725,14 @@ function OptionsEditor({ value, onChange }) {
   const add = () => onChange([...options, ''])
   const remove = (idx) => onChange(options.length > 1 ? options.filter((_, i) => i !== idx) : options)
 
-  // 엑셀 등에서 여러 셀(가로·세로 무관)을 붙여넣으면 옵션을 일괄 추가
+  // 엑셀 등에서 여러 셀(가로·세로 무관)을 붙여넣으면 옵션을 일괄 추가.
+  // 한 셀만 복사한 경우는 가로채지 않는다 — 브라우저 기본 붙여넣기가 맞다.
   const handlePaste = (idx, e) => {
-    const text = e.clipboardData?.getData('text')
-    if (!text) return
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    const lines = normalized.split('\n')
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-    if (lines.length === 0) return
-    const matrix = lines.map(line => line.split('\t'))
-    const isMulti = matrix.length > 1 || matrix[0].length > 1
-    if (!isMulti) return
+    const cells = flattenClipboardCells(e.clipboardData?.getData('text'))
+    if (!cells) return
     e.preventDefault()
-
-    const flat = []
-    matrix.forEach(row => row.forEach(cell => flat.push(cell)))
-    const cleaned = flat.map(s => s.trim()).filter(s => s !== '')
-    if (cleaned.length === 0) return
-
     const next = [...options]
-    next.splice(idx, 1, ...cleaned)
+    next.splice(idx, 1, ...cells)
     onChange(next)
   }
 
@@ -822,50 +760,172 @@ function OptionsEditor({ value, onChange }) {
 }
 
 // ============================================
+// 표 조회 설정 — 행 / 열 / 행열(교차)
+// ============================================
+const LOOKUP_MODES = [
+  {
+    key: 'row',
+    label: '행 조회',
+    help: '조회 열의 값으로 행을 고르고, 정해 둔 결과 열의 값을 꺼냅니다. 한 행이 한 항목인 보통의 세로 표.',
+  },
+  {
+    key: 'column',
+    label: '열 조회',
+    help: '조회 행의 값으로 열을 고르고, 정해 둔 결과 행의 값을 꺼냅니다. 항목이 가로로 누운 표.',
+  },
+  {
+    key: 'cell',
+    label: '행열 조회',
+    help: '행과 열을 모두 골라 만나는 칸의 값을 꺼냅니다. 행 머리글과 열 머리글이 있는 행렬표 — 펼쳐 적을 필요가 없습니다.',
+  },
+]
+
+// 행/열 조회는 표 안의 값과 맞추므로 보간이 성립하지 않는다(값 하나를 고르는
+// 일이라 중간값이 없다). 교차 조회의 축 매칭만 보간·범위를 갖는다.
+const ROW_MATCH_MODES = ['exact', 'nearest', 'floor', 'ceiling', 'range']
+const AXIS_MATCH_MODES = ['exact', 'nearest', 'floor', 'ceiling', 'interpolate', 'range']
+
+const RangeNote = styled.div`
+  font-size: 0.75rem;
+  color: #777;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 5px;
+  padding: 7px 10px;
+  margin: 4px 0 8px 0;
+  line-height: 1.6;
+`
+
+const RangeBad = styled.span`
+  color: #c0392b;
+`
+
+/**
+ * 범위 머리글을 **어떻게 읽었는지 되비춘다.**
+ *
+ * `10~20` 같은 표기는 사람마다 다르게 쓴다. 자동으로 읽고 조용히 넘어가면 잘못
+ * 읽고도 값이 나오는데, 그게 제일 찾기 어려운 오류다. 읽은 결과를 그대로
+ * 보여 주면 틀렸을 때 사람이 바로 본다.
+ */
+function RangePreview({ show, headers }) {
+  if (!show) return null
+  const list = (headers || []).filter(h => String(h ?? '').trim() !== '')
+  if (list.length === 0) return null
+  return (
+    <RangeNote>
+      읽은 구간:{' '}
+      {list.map((h, i) => {
+        const parsed = parseRangeHeader(h)
+        return (
+          <React.Fragment key={i}>
+            {i > 0 && ' · '}
+            <b>{String(h)}</b>
+            {' → '}
+            {parsed ? describeRange(parsed) : <RangeBad>읽을 수 없음</RangeBad>}
+          </React.Fragment>
+        )
+      })}
+    </RangeNote>
+  )
+}
+
+// ============================================
 // Table editor sub-component
 // ============================================
 function TableEditor({ value, onChange, availableSymbols }) {
   const data = value
+
+  const lookupMode = data.lookup_mode || 'row'
+
+  // 조회 방식을 바꾸면 그 방식이 쓰는 칸만 채워 둔다. 다른 방식의 설정은 지우지
+  // 않는다 — 잘못 눌렀다가 되돌릴 때 다시 입력하게 되면 성가시다.
+  const setLookupMode = (mode) => {
+    const patch = { lookup_mode: mode }
+    if (mode === 'row' && !data.keys?.length) {
+      patch.keys = [{ column_index: 0, expression: '', match_mode: 'exact' }]
+    }
+    if (mode === 'column') {
+      if (data.label_column_index == null) patch.label_column_index = 0
+      if (!data.keys?.length) patch.keys = [{ row_label: '', expression: '', match_mode: 'exact' }]
+    }
+    if (mode === 'cell') {
+      if (data.row_header_index == null) patch.row_header_index = 0
+      if (!data.row_lookup) patch.row_lookup = { expression: '', match_mode: 'exact' }
+      if (!data.column_lookup) patch.column_lookup = { expression: '', match_mode: 'exact' }
+    }
+    set(patch)
+  }
+
+  // 누운 표에서 각 행의 이름 — "항목 이름이 든 열"의 값들.
+  const rowLabels = (data.rows || []).map(r => String(r[data.label_column_index ?? 0] ?? ''))
+  const valuesOfRow = (label) => {
+    const idx = rowLabels.indexOf(String(label ?? ''))
+    if (idx < 0) return []
+    return (data.rows[idx] || []).filter((_, i) => i !== (data.label_column_index ?? 0))
+  }
+
+  // 표 참조 — 열·행은 원본(템플릿)에서 오고, 조회 키와 결과 열만 이 변수의 것이다.
+  const isRef = data.source_template_id != null
+  const [editingSource, setEditingSource] = useState(false)
+  const [usage, setUsage] = useState(null)
+  const [refMsg, setRefMsg] = useState('')
+  // 참조 중에는 데이터를 못 고친다. "원본 편집" 을 눌러야 열린다 — 무심코 고쳐서
+  // 다른 변수까지 바뀌는 일을 막는다.
+  const locked = isRef && !editingSource
+
+  const startEditingSource = async () => {
+    setRefMsg('')
+    try {
+      const res = await apiFetch(`/templates/${data.source_template_id}/usage`)
+      if (res.ok) {
+        const body = await res.json()
+        setUsage(body.users.length)
+        if (body.users.length > 1) {
+          const others = body.users.length - 1
+          if (!window.confirm(
+            `이 표는 다른 변수 ${others}개도 함께 쓰고 있습니다.` +
+            '\n여기서 고치면 그 변수들의 계산 결과도 함께 바뀝니다. 계속할까요?'
+          )) return
+        }
+      }
+    } catch { /* 사용처를 못 읽어도 편집 자체는 막지 않는다 */ }
+    setEditingSource(true)
+  }
+
+  const saveSource = async () => {
+    setRefMsg('')
+    try {
+      const res = await apiFetch(`/templates/${data.source_template_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ data: JSON.stringify({ columns: data.columns, rows: data.rows }) }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setRefMsg(body.error || '원본 저장 실패')
+        return
+      }
+      setEditingSource(false)
+      setRefMsg('원본 표를 저장했습니다. 이 표를 참조하는 변수에 모두 반영됩니다.')
+    } catch {
+      setRefMsg('서버 통신 실패')
+    }
+  }
+
+  const detach = () => {
+    if (!window.confirm(
+      '참조를 풀고 지금 내용을 이 변수만의 복사본으로 만듭니다.' +
+      '\n이후에는 원본을 고쳐도 여기에 반영되지 않습니다. 계속할까요?'
+    )) return
+    const { source_template_id, source_name, source_error, ...rest } = data
+    onChange(rest)
+  }
+
 
   const set = (patch) => onChange({ ...data, ...patch })
 
   const renameColumn = (idx, name) => {
     const cols = data.columns.map((c, i) => i === idx ? name : c)
     set({ columns: cols })
-  }
-
-  const setCell = (rowIdx, colIdx, val) => {
-    const rows = data.rows.map((r, i) =>
-      i === rowIdx ? r.map((c, j) => j === colIdx ? val : c) : r
-    )
-    set({ rows })
-  }
-
-  const addRow = () => {
-    set({ rows: [...data.rows, data.columns.map(() => '')] })
-  }
-
-  const removeRow = (idx) => {
-    set({ rows: data.rows.filter((_, i) => i !== idx) })
-  }
-
-  const addColumn = () => {
-    const newName = `열 ${data.columns.length + 1}`
-    set({
-      columns: [...data.columns, newName],
-      rows: data.rows.map(r => [...r, '']),
-    })
-  }
-
-  const removeColumn = (idx) => {
-    if (data.columns.length <= 1) return
-    const adjust = (i) => i > idx ? i - 1 : (i === idx ? 0 : i)
-    set({
-      columns: data.columns.filter((_, i) => i !== idx),
-      rows: data.rows.map(r => r.filter((_, i) => i !== idx)),
-      result_column_index: adjust(data.result_column_index),
-      keys: data.keys.map(k => ({ ...k, column_index: adjust(k.column_index) })),
-    })
   }
 
   const updateKey = (idx, patch) => {
@@ -887,82 +947,35 @@ function TableEditor({ value, onChange, availableSymbols }) {
     set({ keys: data.keys.filter((_, i) => i !== idx) })
   }
 
-  // 엑셀 TSV 클립보드 파싱 — 멀티셀일 때만 매트릭스 반환, 아니면 null
-  const parseClipboardMatrix = (text) => {
-    if (!text) return null
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    const lines = normalized.split('\n')
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-    if (lines.length === 0) return null
-    const matrix = lines.map(line => line.split('\t'))
-    const isMulti = matrix.length > 1 || matrix[0].length > 1
-    return isMulti ? matrix : null
-  }
-
-  // 데이터 셀(rowIdx, colIdx)에 붙여넣기 — 필요 시 행·열 확장
-  const handleCellPaste = (rowIdx, colIdx, e) => {
-    const text = e.clipboardData?.getData('text')
-    const matrix = parseClipboardMatrix(text)
-    if (!matrix) return
-    e.preventDefault()
-
-    const pasteRows = matrix.length
-    const pasteCols = Math.max(...matrix.map(r => r.length))
-    const neededCols = colIdx + pasteCols
-    const neededRows = rowIdx + pasteRows
-
-    const newColumns = [...data.columns]
-    const newRows = data.rows.map(r => [...r])
-    while (newColumns.length < neededCols) {
-      newColumns.push(`열 ${newColumns.length + 1}`)
-      newRows.forEach(r => r.push(''))
-    }
-    while (newRows.length < neededRows) {
-      newRows.push(newColumns.map(() => ''))
-    }
-    for (let ri = 0; ri < pasteRows; ri++) {
-      for (let ci = 0; ci < matrix[ri].length; ci++) {
-        newRows[rowIdx + ri][colIdx + ci] = matrix[ri][ci]
-      }
-    }
-    set({ columns: newColumns, rows: newRows })
-  }
-
-  // 헤더(colIdx)에 붙여넣기 — 첫 줄은 열 이름, 이후 줄은 데이터 (행 0부터)
-  const handleHeaderPaste = (colIdx, e) => {
-    const text = e.clipboardData?.getData('text')
-    const matrix = parseClipboardMatrix(text)
-    if (!matrix) return
-    e.preventDefault()
-
-    const [headerLine, ...dataLines] = matrix
-    const pasteCols = Math.max(headerLine.length, ...dataLines.map(r => r.length), 0)
-    const neededCols = colIdx + pasteCols
-    const neededRows = dataLines.length
-
-    const newColumns = [...data.columns]
-    const newRows = data.rows.map(r => [...r])
-    while (newColumns.length < neededCols) {
-      newColumns.push(`열 ${newColumns.length + 1}`)
-      newRows.forEach(r => r.push(''))
-    }
-    while (newRows.length < neededRows) {
-      newRows.push(newColumns.map(() => ''))
-    }
-
-    for (let ci = 0; ci < headerLine.length; ci++) {
-      newColumns[colIdx + ci] = headerLine[ci]
-    }
-    for (let ri = 0; ri < dataLines.length; ri++) {
-      for (let ci = 0; ci < dataLines[ri].length; ci++) {
-        newRows[ri][colIdx + ci] = dataLines[ri][ci]
-      }
-    }
-    set({ columns: newColumns, rows: newRows })
-  }
-
   return (
     <>
+      {isRef && (
+        <RefBanner $error={Boolean(data.source_error)}>
+          {data.source_error ? (
+            <>⚠ {data.source_error}</>
+          ) : (
+            <>
+              📎 <RefName>{data.source_name || '저장된 표'}</RefName> 를 참조하고 있습니다.
+              열과 행은 원본에서 옵니다 — 원본을 고치면 이 표를 쓰는 변수가 모두 함께 바뀝니다.
+              조회 키와 결과 열은 이 변수만의 설정입니다.
+              {usage != null && usage > 1 && <> (지금 {usage}개 변수가 이 표를 씁니다)</>}
+            </>
+          )}
+          <RefBannerRow>
+            {editingSource ? (
+              <>
+                <SmallBtn type="button" onClick={saveSource}>원본에 저장</SmallBtn>
+                <SmallBtn type="button" onClick={() => setEditingSource(false)}>편집 취소</SmallBtn>
+              </>
+            ) : (
+              <SmallBtn type="button" onClick={startEditingSource}>원본 표 편집</SmallBtn>
+            )}
+            <SmallBtn type="button" onClick={detach}>참조 해제 (복사본으로)</SmallBtn>
+          </RefBannerRow>
+          {refMsg && <div style={{ marginTop: 8 }}>{refMsg}</div>}
+        </RefBanner>
+      )}
+
       <FormGroup>
         <Label>열 이름</Label>
         <ColumnNamesGrid>
@@ -973,6 +986,7 @@ function TableEditor({ value, onChange, availableSymbols }) {
                 value={col}
                 onChange={(e) => renameColumn(ci, e.target.value)}
                 placeholder={`열 ${ci + 1}`}
+                disabled={locked}
               />
             </ColumnNameField>
           ))}
@@ -984,103 +998,248 @@ function TableEditor({ value, onChange, availableSymbols }) {
 
       <FormGroup>
         <Label>테이블 데이터</Label>
-        <TableWrap>
-          <TableEl>
-            <thead>
-              <tr>
-                {data.columns.map((col, ci) => (
-                  <Th key={ci}>
-                    <HeaderInput
-                      value={col}
-                      onChange={(e) => renameColumn(ci, e.target.value)}
-                      onPaste={(e) => handleHeaderPaste(ci, e)}
-                      placeholder={`열 ${ci + 1}`}
-                    />
-                    {data.columns.length > 1 && (
-                      <ColRemoveBtn type="button" onClick={() => removeColumn(ci)} title="열 삭제">✕</ColRemoveBtn>
-                    )}
-                  </Th>
-                ))}
-                <Th style={{ width: 32, minWidth: 32, background: '#f1f3f5' }} />
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((row, ri) => (
-                <tr key={ri}>
-                  {data.columns.map((_, ci) => (
-                    <Td key={ci}>
-                      <CellInput
-                        value={row[ci] ?? ''}
-                        onChange={(e) => setCell(ri, ci, e.target.value)}
-                        onPaste={(e) => handleCellPaste(ri, ci, e)}
-                      />
-                    </Td>
-                  ))}
-                  <RowRemoveCell>
-                    <RowRemoveBtn type="button" onClick={() => removeRow(ri)} title="행 삭제">✕</RowRemoveBtn>
-                  </RowRemoveCell>
-                </tr>
-              ))}
-            </tbody>
-          </TableEl>
-        </TableWrap>
-        <TableActions>
-          <SmallBtn type="button" onClick={addRow}>+ 행 추가</SmallBtn>
-          <SmallBtn type="button" onClick={addColumn}>+ 열 추가</SmallBtn>
-        </TableActions>
-        <FormulaHint>
-          💡 엑셀에서 범위를 복사한 뒤 셀에 붙여넣으면 그 위치부터 데이터가 채워지고 행·열이 자동으로 확장됩니다. 헤더 칸에 붙여넣으면 첫 줄이 열 이름으로 사용됩니다.
-        </FormulaHint>
+        <TableGrid
+          value={data}
+          readOnly={locked}
+          onChange={(next, meta) => {
+            // 열을 지우면 조회 키·결과 열이 가리키던 번호가 밀린다. 그리드는
+            // 그 사정을 모르므로 여기서 맞춘다.
+            if (meta?.type === 'removeColumn') {
+              const shift = (i) => shiftColumnIndex(i, meta.index)
+              set({
+                ...next,
+                result_column_index: shift(data.result_column_index),
+                keys: (data.keys || []).map(k => ({ ...k, column_index: shift(k.column_index) })),
+              })
+              return
+            }
+            set(next)
+          }}
+        />
       </FormGroup>
 
       <FormGroup>
-        <Label>결과 열 (Result)</Label>
-        <Select
-          value={data.result_column_index}
-          onChange={(e) => set({ result_column_index: Number(e.target.value) })}
-        >
-          {data.columns.map((c, i) => (
-            <option key={i} value={i}>{c || `열 ${i + 1}`}</option>
+        <Label>조회 방식</Label>
+        <SegmentedRow>
+          {LOOKUP_MODES.map(m => (
+            <SegmentBtn
+              key={m.key}
+              type="button"
+              $active={lookupMode === m.key}
+              onClick={() => setLookupMode(m.key)}
+              title={m.help}
+            >
+              {m.label}
+            </SegmentBtn>
           ))}
-        </Select>
-      </FormGroup>
-
-      <FormGroup>
-        <Label>조회 키 (Keys)</Label>
-        {data.keys.map((k, i) => (
-          <KeyRow key={i}>
-            <Select
-              value={k.column_index}
-              onChange={(e) => updateKey(i, { column_index: Number(e.target.value) })}
-            >
-              {data.columns.map((c, ci) => (
-                <option key={ci} value={ci}>{c || `열 ${ci + 1}`}</option>
-              ))}
-            </Select>
-            <KeyExprInput
-              value={k.expression}
-              onChange={(e) => updateKey(i, { expression: e.target.value })}
-              placeholder="조회 수식 (예: A, d_i, A + 2)"
-            />
-            <Select
-              value={k.match_mode}
-              onChange={(e) => updateKey(i, { match_mode: e.target.value })}
-            >
-              <option value="exact">정확히 일치</option>
-              <option value="nearest">가장 가까운 값</option>
-              <option value="floor">내림 (Floor)</option>
-              <option value="ceiling">올림 (Ceiling)</option>
-            </Select>
-            <OptionRemoveBtn type="button" onClick={() => removeKey(i)} title="조회 키 삭제">✕</OptionRemoveBtn>
-          </KeyRow>
-        ))}
-        <SmallBtn type="button" onClick={addKey} style={{ marginTop: 4 }}>+ 조회 키 추가</SmallBtn>
+        </SegmentedRow>
         <FormulaHint>
-          여러 조회 키를 정의하면 모든 키가 동시에 매칭되는 행(AND)을 찾습니다. 예) "직경(가장 가까운 값) AND 재질(정확히 일치)".
-          {' '}내림/올림은 숫자 키에서만 동작하며, 동점이면 거리 합이 가장 작은 행이 선택됩니다.
-          {availableSymbols.length > 0 && <> 사용 가능한 기호: {availableSymbols.join(', ')}</>}
+          {LOOKUP_MODES.find(m => m.key === lookupMode)?.help}
         </FormulaHint>
       </FormGroup>
+
+      {lookupMode === 'row' && (
+        <>
+          <FormGroup>
+            <Label>결과 열 (Result)</Label>
+            <Select
+              value={data.result_column_index ?? 0}
+              onChange={(e) => set({ result_column_index: Number(e.target.value) })}
+            >
+              {data.columns.map((c, i) => (
+                <option key={i} value={i}>{c || `열 ${i + 1}`}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          <FormGroup>
+            <Label>조회 열 (Keys)</Label>
+            {(data.keys || []).map((k, i) => (
+              <div key={i}>
+                <KeyRow>
+                  <Select
+                    value={k.column_index}
+                    onChange={(e) => updateKey(i, { column_index: Number(e.target.value) })}
+                  >
+                    {data.columns.map((c, ci) => (
+                      <option key={ci} value={ci}>{c || `열 ${ci + 1}`}</option>
+                    ))}
+                  </Select>
+                  <KeyExprInput
+                    value={k.expression}
+                    onChange={(e) => updateKey(i, { expression: e.target.value })}
+                    placeholder="조회 수식 (예: A, d_i, A + 2)"
+                  />
+                  <Select
+                    value={k.match_mode}
+                    onChange={(e) => updateKey(i, { match_mode: e.target.value })}
+                  >
+                    {ROW_MATCH_MODES.map(m => (
+                      <option key={m} value={m}>{MATCH_MODE_LABEL[m]}</option>
+                    ))}
+                  </Select>
+                  <OptionRemoveBtn type="button" onClick={() => removeKey(i)} title="조회 열 삭제">✕</OptionRemoveBtn>
+                </KeyRow>
+                <RangePreview
+                  show={k.match_mode === 'range'}
+                  headers={data.rows.map(r => r[k.column_index])}
+                />
+              </div>
+            ))}
+            <SmallBtn type="button" onClick={addKey} style={{ marginTop: 4 }}>+ 조회 열 추가</SmallBtn>
+            <FormulaHint>
+              여러 조회 열을 정의하면 모든 조건이 동시에 맞는 행(AND)을 찾습니다. 예) "직경(가장 가까운 값) AND 재질(정확히 일치)".
+              {' '}동점이면 거리 합이 가장 작은 행이 선택됩니다.
+              {availableSymbols.length > 0 && <> 사용 가능한 기호: {availableSymbols.join(', ')}</>}
+            </FormulaHint>
+          </FormGroup>
+        </>
+      )}
+
+      {lookupMode === 'column' && (
+        <>
+          <FormGroup>
+            <Label>항목 이름이 든 열</Label>
+            <Select
+              value={data.label_column_index ?? 0}
+              onChange={(e) => set({ label_column_index: Number(e.target.value) })}
+            >
+              {data.columns.map((c, i) => (
+                <option key={i} value={i}>{c || `열 ${i + 1}`}</option>
+              ))}
+            </Select>
+            <FormulaHint>
+              누운 표에서는 각 <b>행</b>이 하나의 항목입니다. 그 이름(예: 재료, 항복강도)이 들어 있는 열을 고르세요.
+            </FormulaHint>
+          </FormGroup>
+
+          <FormGroup>
+            <Label>결과 행 (Result)</Label>
+            <Select
+              value={data.result_row_label ?? ''}
+              onChange={(e) => set({ result_row_label: e.target.value })}
+            >
+              <option value="">선택하세요</option>
+              {rowLabels.map((label, i) => (
+                <option key={i} value={label}>{label || `행 ${i + 1}`}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          <FormGroup>
+            <Label>조회 행 (Keys)</Label>
+            {(data.keys || []).map((k, i) => (
+              <div key={i}>
+                <KeyRow>
+                  <Select
+                    value={k.row_label ?? ''}
+                    onChange={(e) => updateKey(i, { row_label: e.target.value })}
+                  >
+                    <option value="">선택하세요</option>
+                    {rowLabels.map((label, ri) => (
+                      <option key={ri} value={label}>{label || `행 ${ri + 1}`}</option>
+                    ))}
+                  </Select>
+                  <KeyExprInput
+                    value={k.expression}
+                    onChange={(e) => updateKey(i, { expression: e.target.value })}
+                    placeholder="조회 수식 (예: A, mat)"
+                  />
+                  <Select
+                    value={k.match_mode}
+                    onChange={(e) => updateKey(i, { match_mode: e.target.value })}
+                  >
+                    {ROW_MATCH_MODES.map(m => (
+                      <option key={m} value={m}>{MATCH_MODE_LABEL[m]}</option>
+                    ))}
+                  </Select>
+                  <OptionRemoveBtn type="button" onClick={() => removeKey(i)} title="조회 행 삭제">✕</OptionRemoveBtn>
+                </KeyRow>
+                <RangePreview
+                  show={k.match_mode === 'range'}
+                  headers={valuesOfRow(k.row_label)}
+                />
+              </div>
+            ))}
+            <SmallBtn type="button" onClick={addKey} style={{ marginTop: 4 }}>+ 조회 행 추가</SmallBtn>
+            <FormulaHint>
+              조회 행의 값들과 맞춰 <b>열</b>을 고르고, 그 열에서 결과 행의 값을 꺼냅니다.
+              {availableSymbols.length > 0 && <> 사용 가능한 기호: {availableSymbols.join(', ')}</>}
+            </FormulaHint>
+          </FormGroup>
+        </>
+      )}
+
+      {lookupMode === 'cell' && (
+        <>
+          <FormGroup>
+            <Label>행 머리글이 든 열</Label>
+            <Select
+              value={data.row_header_index ?? 0}
+              onChange={(e) => set({ row_header_index: Number(e.target.value) })}
+            >
+              {data.columns.map((c, i) => (
+                <option key={i} value={i}>{c || `열 ${i + 1}`}</option>
+              ))}
+            </Select>
+            <FormulaHint>
+              보통 맨 왼쪽 열입니다. 나머지 열의 <b>머리글</b>이 다른 한 축이 됩니다.
+              결과는 두 축이 만나는 칸의 값입니다 — 결과 열을 따로 고르지 않습니다.
+            </FormulaHint>
+          </FormGroup>
+
+          <FormGroup>
+            <Label>행 조회 (세로 축)</Label>
+            <KeyRow>
+              <KeyExprInput
+                value={data.row_lookup?.expression ?? ''}
+                onChange={(e) => set({ row_lookup: { ...(data.row_lookup || {}), expression: e.target.value } })}
+                placeholder="조회 수식 (예: mat)"
+              />
+              <Select
+                value={data.row_lookup?.match_mode ?? 'exact'}
+                onChange={(e) => set({ row_lookup: { ...(data.row_lookup || {}), match_mode: e.target.value } })}
+              >
+                {AXIS_MATCH_MODES.map(m => (
+                  <option key={m} value={m}>{MATCH_MODE_LABEL[m]}</option>
+                ))}
+              </Select>
+            </KeyRow>
+            <RangePreview
+              show={data.row_lookup?.match_mode === 'range'}
+              headers={data.rows.map(r => r[data.row_header_index ?? 0])}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <Label>열 조회 (가로 축)</Label>
+            <KeyRow>
+              <KeyExprInput
+                value={data.column_lookup?.expression ?? ''}
+                onChange={(e) => set({ column_lookup: { ...(data.column_lookup || {}), expression: e.target.value } })}
+                placeholder="조회 수식 (예: t)"
+              />
+              <Select
+                value={data.column_lookup?.match_mode ?? 'exact'}
+                onChange={(e) => set({ column_lookup: { ...(data.column_lookup || {}), match_mode: e.target.value } })}
+              >
+                {AXIS_MATCH_MODES.map(m => (
+                  <option key={m} value={m}>{MATCH_MODE_LABEL[m]}</option>
+                ))}
+              </Select>
+            </KeyRow>
+            <RangePreview
+              show={data.column_lookup?.match_mode === 'range'}
+              headers={data.columns.filter((_, i) => i !== (data.row_header_index ?? 0))}
+            />
+            <FormulaHint>
+              축마다 매칭 방법을 따로 고를 수 있습니다. 예) 재료는 <b>정확히 일치</b>, 두께는 <b>사이값 보간</b>.
+              {' '}두 축 모두 보간이면 네 모서리를 섞는 쌍선형 보간이 됩니다.
+              {availableSymbols.length > 0 && <> 사용 가능한 기호: {availableSymbols.join(', ')}</>}
+            </FormulaHint>
+          </FormGroup>
+        </>
+      )}
     </>
   )
 }
@@ -1095,105 +1254,6 @@ function InterpTableEditor({ value, onChange, availableSymbols }) {
   const renameColumn = (idx, name) => {
     const cols = data.columns.map((c, i) => i === idx ? name : c)
     set({ columns: cols })
-  }
-
-  const setCell = (rowIdx, colIdx, val) => {
-    const rows = data.rows.map((r, i) =>
-      i === rowIdx ? r.map((c, j) => j === colIdx ? val : c) : r
-    )
-    set({ rows })
-  }
-
-  const addRow = () => {
-    set({ rows: [...data.rows, data.columns.map(() => '')] })
-  }
-
-  const removeRow = (idx) => {
-    set({ rows: data.rows.filter((_, i) => i !== idx) })
-  }
-
-  const addColumn = () => {
-    set({
-      columns: [...data.columns, `열 ${data.columns.length + 1}`],
-      rows: data.rows.map(r => [...r, '']),
-    })
-  }
-
-  const removeColumn = (idx) => {
-    if (data.columns.length <= 2) return
-    const adjust = (i) => i > idx ? i - 1 : (i === idx ? 0 : i)
-    set({
-      columns: data.columns.filter((_, i) => i !== idx),
-      rows: data.rows.map(r => r.filter((_, i) => i !== idx)),
-      x_column_index: adjust(data.x_column_index),
-      y_column_index: adjust(data.y_column_index),
-    })
-  }
-
-  const parseClipboardMatrix = (text) => {
-    if (!text) return null
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    const lines = normalized.split('\n')
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-    if (lines.length === 0) return null
-    const matrix = lines.map(line => line.split('\t'))
-    const isMulti = matrix.length > 1 || matrix[0].length > 1
-    return isMulti ? matrix : null
-  }
-
-  const handleCellPaste = (rowIdx, colIdx, e) => {
-    const text = e.clipboardData?.getData('text')
-    const matrix = parseClipboardMatrix(text)
-    if (!matrix) return
-    e.preventDefault()
-    const pasteRows = matrix.length
-    const pasteCols = Math.max(...matrix.map(r => r.length))
-    const neededCols = colIdx + pasteCols
-    const neededRows = rowIdx + pasteRows
-    const newColumns = [...data.columns]
-    const newRows = data.rows.map(r => [...r])
-    while (newColumns.length < neededCols) {
-      newColumns.push(`열 ${newColumns.length + 1}`)
-      newRows.forEach(r => r.push(''))
-    }
-    while (newRows.length < neededRows) {
-      newRows.push(newColumns.map(() => ''))
-    }
-    for (let ri = 0; ri < pasteRows; ri++) {
-      for (let ci = 0; ci < matrix[ri].length; ci++) {
-        newRows[rowIdx + ri][colIdx + ci] = matrix[ri][ci]
-      }
-    }
-    set({ columns: newColumns, rows: newRows })
-  }
-
-  const handleHeaderPaste = (colIdx, e) => {
-    const text = e.clipboardData?.getData('text')
-    const matrix = parseClipboardMatrix(text)
-    if (!matrix) return
-    e.preventDefault()
-    const [headerLine, ...dataLines] = matrix
-    const pasteCols = Math.max(headerLine.length, ...dataLines.map(r => r.length), 0)
-    const neededCols = colIdx + pasteCols
-    const neededRows = dataLines.length
-    const newColumns = [...data.columns]
-    const newRows = data.rows.map(r => [...r])
-    while (newColumns.length < neededCols) {
-      newColumns.push(`열 ${newColumns.length + 1}`)
-      newRows.forEach(r => r.push(''))
-    }
-    while (newRows.length < neededRows) {
-      newRows.push(newColumns.map(() => ''))
-    }
-    for (let ci = 0; ci < headerLine.length; ci++) {
-      newColumns[colIdx + ci] = headerLine[ci]
-    }
-    for (let ri = 0; ri < dataLines.length; ri++) {
-      for (let ci = 0; ci < dataLines[ri].length; ci++) {
-        newRows[ri][colIdx + ci] = dataLines[ri][ci]
-      }
-    }
-    set({ columns: newColumns, rows: newRows })
   }
 
   return (
@@ -1216,50 +1276,24 @@ function InterpTableEditor({ value, onChange, availableSymbols }) {
 
       <FormGroup>
         <Label>(x, y) 데이터</Label>
-        <TableWrap>
-          <TableEl>
-            <thead>
-              <tr>
-                {data.columns.map((col, ci) => (
-                  <Th key={ci}>
-                    <HeaderInput
-                      value={col}
-                      onChange={(e) => renameColumn(ci, e.target.value)}
-                      onPaste={(e) => handleHeaderPaste(ci, e)}
-                      placeholder={`열 ${ci + 1}`}
-                    />
-                    {data.columns.length > 2 && (
-                      <ColRemoveBtn type="button" onClick={() => removeColumn(ci)} title="열 삭제">✕</ColRemoveBtn>
-                    )}
-                  </Th>
-                ))}
-                <Th style={{ width: 32, minWidth: 32, background: '#f1f3f5' }} />
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((row, ri) => (
-                <tr key={ri}>
-                  {data.columns.map((_, ci) => (
-                    <Td key={ci}>
-                      <CellInput
-                        value={row[ci] ?? ''}
-                        onChange={(e) => setCell(ri, ci, e.target.value)}
-                        onPaste={(e) => handleCellPaste(ri, ci, e)}
-                      />
-                    </Td>
-                  ))}
-                  <RowRemoveCell>
-                    <RowRemoveBtn type="button" onClick={() => removeRow(ri)} title="행 삭제">✕</RowRemoveBtn>
-                  </RowRemoveCell>
-                </tr>
-              ))}
-            </tbody>
-          </TableEl>
-        </TableWrap>
-        <TableActions>
-          <SmallBtn type="button" onClick={addRow}>+ 행 추가</SmallBtn>
-          <SmallBtn type="button" onClick={addColumn}>+ 열 추가</SmallBtn>
-        </TableActions>
+        <TableGrid
+          value={data}
+          minColumns={2}
+          hint=""
+          onChange={(next, meta) => {
+            // x·y 열은 번호로 지정돼 있다. 열이 사라지면 그 번호도 밀어야 한다.
+            if (meta?.type === 'removeColumn') {
+              const shift = (i) => shiftColumnIndex(i, meta.index)
+              set({
+                ...next,
+                x_column_index: shift(data.x_column_index),
+                y_column_index: shift(data.y_column_index),
+              })
+              return
+            }
+            set(next)
+          }}
+        />
         <FormulaHint>
           💡 엑셀에서 (x, y) 쌍을 복사해 붙여넣을 수 있습니다. 비숫자 행은 평가 시 자동으로 무시됩니다.
         </FormulaHint>
@@ -1365,7 +1399,11 @@ function formatDate(iso) {
   } catch { return '' }
 }
 
-function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode = 'load' }) {
+function TemplateModal({ varType, getCurrentData, onLoad, onReference, onClose, initialMode = 'load' }) {
+  // 'reference' 는 표를 **연결**한다(원본을 고치면 따라 바뀐다).
+  // 'load' 는 내용을 복사해 온다(이후 원본과 무관해진다).
+  const isReferenceMode = initialMode === 'reference'
+  const [deleteError, setDeleteError] = useState('')
   const [templates, setTemplates] = useState([])
   const [search, setSearch] = useState('')
   const [tplName, setTplName] = useState('')
@@ -1375,7 +1413,7 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${API_URL}/templates?var_type=${encodeURIComponent(varType)}`)
+      const res = await apiFetch(`/templates?var_type=${encodeURIComponent(varType)}`)
       if (res.ok) setTemplates(await res.json())
     } catch (err) {
       console.error('템플릿 목록 불러오기 실패', err)
@@ -1416,7 +1454,7 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
     if (data == null) return
     setBusy(true)
     try {
-      const res = await fetch(`${API_URL}/templates`, {
+      const res = await apiFetch(`/templates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, var_type: varType, data }),
@@ -1434,16 +1472,25 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
   const handleDelete = async (e, tpl) => {
     e.stopPropagation()
     if (!window.confirm(`템플릿 "${tpl.name}"을(를) 삭제할까요?`)) return
+    setDeleteError('')
     try {
-      await fetch(`${API_URL}/templates/${tpl.id}`, { method: 'DELETE' })
+      const res = await apiFetch(`/templates/${tpl.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        // 참조 중이면 서버가 막는다. 그 사실을 화면에 보여 주지 않으면
+        // "삭제를 눌렀는데 그대로" 로만 보인다.
+        const body = await res.json().catch(() => ({}))
+        setDeleteError(body.error || '삭제하지 못했습니다.')
+        return
+      }
       fetchTemplates()
-    } catch (err) {
-      console.error('템플릿 삭제 실패', err)
+    } catch {
+      setDeleteError('서버 통신 실패')
     }
   }
 
   const handleLoad = (tpl) => {
-    onLoad(tpl)
+    if (isReferenceMode) onReference(tpl)
+    else onLoad(tpl)
     onClose()
   }
 
@@ -1451,7 +1498,10 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
     <TplOverlay onClick={onClose}>
       <TplModal onClick={(e) => e.stopPropagation()}>
         <TplHeader>
-          <TplTitle>{TYPE_LABEL[varType] || ''} 템플릿</TplTitle>
+          <TplTitle>
+            {TYPE_LABEL[varType] || ''} 템플릿
+            {isReferenceMode && ' — 참조할 표 고르기'}
+          </TplTitle>
           <TplCloseBtn type="button" onClick={onClose}>✕</TplCloseBtn>
         </TplHeader>
 
@@ -1467,6 +1517,10 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
           </TplCount>
         </TplSearchRow>
 
+        {deleteError && (
+          <RefBanner $error style={{ margin: '0 0 10px 0' }}>{deleteError}</RefBanner>
+        )}
+
         <TplListBody>
           {filtered.length === 0 ? (
             <TplEmpty>
@@ -1475,7 +1529,11 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
           ) : (
             <>
               {visible.map(tpl => (
-                <TplCard key={tpl.id} onClick={() => handleLoad(tpl)} title="클릭해서 불러오기">
+                <TplCard
+                  key={tpl.id}
+                  onClick={() => handleLoad(tpl)}
+                  title={isReferenceMode ? '클릭해서 참조 연결' : '클릭해서 불러오기(복사)'}
+                >
                   <TplCardHeader>
                     <TplCardName>{tpl.name}</TplCardName>
                     <TplCardDate>{formatDate(tpl.created_at)}</TplCardDate>
@@ -1511,8 +1569,8 @@ function TemplateModal({ varType, getCurrentData, onLoad, onClose, initialMode =
   )
 }
 
-function TemplateToolbar({ varType, getCurrentData, onLoad }) {
-  const [open, setOpen] = useState(null)  // null | 'load' | 'save'
+function TemplateToolbar({ varType, getCurrentData, onLoad, onReference }) {
+  const [open, setOpen] = useState(null)  // null | 'load' | 'save' | 'reference'
   return (
     <>
       <TemplateBar>
@@ -1523,12 +1581,18 @@ function TemplateToolbar({ varType, getCurrentData, onLoad }) {
         <TemplateBtn type="button" onClick={() => setOpen('save')}>
           + 현재 정의 저장
         </TemplateBtn>
+        {onReference && (
+          <TemplateBtn type="button" onClick={() => setOpen('reference')} title="원본을 고치면 함께 바뀝니다">
+            🔗 표 참조
+          </TemplateBtn>
+        )}
       </TemplateBar>
       {open && (
         <TemplateModal
           varType={varType}
           getCurrentData={getCurrentData}
           onLoad={onLoad}
+          onReference={onReference}
           initialMode={open}
           onClose={() => setOpen(null)}
         />
@@ -1551,7 +1615,6 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
   const [options, setOptions] = useState(() => parseOptions(initial?.options_data))
   const [conditionalData, setConditionalData] = useState(() => parseConditional(initial?.conditional_data))
   const [interpData, setInterpData] = useState(() => parseInterpData(initial?.interp_data))
-  const [containerId, setContainerId] = useState(initial?.container_id ?? '')
   const [minValue, setMinValue] = useState(initial?.min_value ?? 0)
   const [maxValue, setMaxValue] = useState(initial?.max_value ?? 100)
   const [error, setError] = useState('')
@@ -1633,26 +1696,71 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
         setError('테이블에 최소 1개의 열과 1개의 행이 필요합니다.')
         return
       }
-      const keys = tableData.keys || []
-      if (keys.length === 0) {
-        setError('조회 키를 1개 이상 정의해주세요.')
-        return
-      }
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i]
-        if (!k.expression?.trim()) {
-          setError(`조회 키 ${i + 1}의 수식을 입력해주세요.`)
+      const mode = tableData.lookup_mode || 'row'
+
+      if (mode === 'cell') {
+        // 교차 조회는 결과 열을 고르지 않는다 — 두 축이 만나는 칸이 결과다.
+        if (!tableData.row_lookup?.expression?.trim()) {
+          setError('행 조회 수식을 입력해주세요.')
           return
         }
-        if (k.column_index === tableData.result_column_index) {
-          setError(`조회 키 ${i + 1}의 열은 결과 열과 달라야 합니다.`)
+        if (!tableData.column_lookup?.expression?.trim()) {
+          setError('열 조회 수식을 입력해주세요.')
           return
         }
-      }
-      const colSet = new Set(keys.map(k => k.column_index))
-      if (colSet.size !== keys.length) {
-        setError('서로 다른 열을 조회 키로 지정해주세요.')
-        return
+        if (tableData.columns.length < 2) {
+          setError('행열 조회에는 행 머리글 열 외에 값 열이 최소 1개 필요합니다.')
+          return
+        }
+      } else if (mode === 'column') {
+        if (!tableData.result_row_label) {
+          setError('결과 행을 골라주세요.')
+          return
+        }
+        const keys = tableData.keys || []
+        if (keys.length === 0) {
+          setError('조회 행을 1개 이상 정의해주세요.')
+          return
+        }
+        for (let i = 0; i < keys.length; i++) {
+          if (!keys[i].row_label) {
+            setError(`조회 행 ${i + 1}을(를) 골라주세요.`)
+            return
+          }
+          if (!keys[i].expression?.trim()) {
+            setError(`조회 행 ${i + 1}의 수식을 입력해주세요.`)
+            return
+          }
+          if (keys[i].row_label === tableData.result_row_label) {
+            setError(`조회 행 ${i + 1}은(는) 결과 행과 달라야 합니다.`)
+            return
+          }
+        }
+        if (new Set(keys.map(k => k.row_label)).size !== keys.length) {
+          setError('서로 다른 행을 조회 행으로 지정해주세요.')
+          return
+        }
+      } else {
+        const keys = tableData.keys || []
+        if (keys.length === 0) {
+          setError('조회 열을 1개 이상 정의해주세요.')
+          return
+        }
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i]
+          if (!k.expression?.trim()) {
+            setError(`조회 열 ${i + 1}의 수식을 입력해주세요.`)
+            return
+          }
+          if (k.column_index === tableData.result_column_index) {
+            setError(`조회 열 ${i + 1}은(는) 결과 열과 달라야 합니다.`)
+            return
+          }
+        }
+        if (new Set(keys.map(k => k.column_index)).size !== keys.length) {
+          setError('서로 다른 열을 조회 열로 지정해주세요.')
+          return
+        }
       }
     }
     if (isComputedCategory && varType === 'interp_table') {
@@ -1781,7 +1889,14 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
               <option value="slider">슬라이더</option>
               <option value="text">텍스트</option>
               <option value="dropdown">드롭다운</option>
+              <option value="array">배열 (여러 값)</option>
             </Select>
+            {/* 입력값에는 계산 타입이 없다. 구분을 바꾸면 타입 칸이 셀렉트에서
+                버튼 줄로 바뀌는데, 그 사실을 모르면 "테이블이 없어졌다" 로 보인다. */}
+            <FormulaHint>
+              수식 · 테이블 · 보간 테이블 · 조건부는 계산 결과라, 변수 구분을
+              <strong> 중간값</strong>이나 <strong>결과값</strong>으로 바꾸면 고를 수 있습니다.
+            </FormulaHint>
           </FormGroup>
         ) : (
           <FormGroup>
@@ -1847,6 +1962,24 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
           {varType === 'dropdown' && (
             <OptionsEditor value={options} onChange={setOptions} />
           )}
+
+          {varType === 'array' && (
+            <FormGroup>
+              <FormulaHint>
+                값을 여러 개 담는 변수입니다. 카드 화면에서 쉼표로 구분해 넣거나
+                엑셀에서 복사해 붙여넣습니다.
+                <br />
+                수식에서는 함수로 다룹니다 — 집계: <b>sum, average, min, max, count</b>,
+                {' '}원소별 계산: <b>add, sub, mul, div</b>, 꺼내기: <b>at(배열, 번째)</b>.
+                <br />
+                예) <b>{'sum(L)'}</b>, <b>{'average(L)'}</b>, <b>{'max(mul(L, W))'}</b>
+                {' '}— 원소별 결과는 다시 배열이 됩니다.
+                <br />
+                배열에 <b>+ - * /</b> 를 직접 쓰면 막습니다. 자바스크립트에서 그 연산이
+                엉뚱한 문자열을 만들어 조용히 틀린 값이 되기 때문입니다.
+              </FormulaHint>
+            </FormGroup>
+          )}
         </>
       ) : (
         <>
@@ -1856,6 +1989,7 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
                 varType="table"
                 getCurrentData={() => JSON.stringify(tableData)}
                 onLoad={(tpl) => setTableData(parseTableData(tpl.data))}
+                onReference={(tpl) => setTableData(referenceTableData(tpl))}
               />
               <TableEditor
                 value={tableData}
@@ -1901,7 +2035,7 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
                 <FormulaTextarea
                   value={formula}
                   onChange={(e) => setFormula(e.target.value)}
-                  placeholder="예: A + B, A * B / 2, (A + B) * C"
+                  placeholder={'예: A + B, A * B / 2, (A + B) * C, "재료: " + name'}
                 />
                 <FormulaHint>
                   {availableSymbols.length > 0
@@ -1909,6 +2043,9 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
                     : <>다른 변수에 기호를 정의하면 수식에서 사용할 수 있습니다.</>}
                   <br />
                   연산자: +, -, *, /, (, ), ^ (거듭제곱, 예: A^2)
+                  <br />
+                  문자열: 큰따옴표로 감싸고 <b>+</b> 로 잇습니다. 예: {'"두께 " + t + "mm"'} → 두께 12mm
+                  {' '}(한쪽이라도 숫자가 아니면 더하기가 아니라 잇기가 됩니다)
                   <br />
                   함수: sin, cos, tan, asin, acos, atan, atan2, radians, degrees, pi(), abs, sqrt, log, log10, exp, pow, min(a,b,...), max(a,b,...), average(a,b,...), prob(값,평균,표준편차) — 정규분포에서 그 값 <b>이하일 확률(%)</b>
                 </FormulaHint>

@@ -1,5 +1,5 @@
 // DOE (Design of Experiments) engine — full factorial combinations + batch evaluation
-import { evaluateVariable } from './evaluators'
+import { calculateCard } from './calcEngine'
 
 // DOE 입력 정의:
 // spec = {
@@ -11,6 +11,15 @@ import { evaluateVariable } from './evaluators'
 // range (text): { mode: 'range', values: [...] }
 
 export function expandRange(inputVar, spec) {
+  // **배열 입력은 DOE 인자가 되지 않는다.**
+  //
+  // DOE 는 인자 하나에 값 하나를 넣어 조합을 만드는 것이라, 값이 여럿인 변수는
+  // "무엇을 바꿔 볼지" 가 성립하지 않는다. 지금 담긴 배열을 그대로 고정값으로
+  // 쓴다 — 배열을 쪼개 조합에 넣으면 실험 설계가 아니라 다른 계산이 된다.
+  if (inputVar.var_type === 'array') {
+    const fixed = Array.isArray(spec?.value) ? spec.value : []
+    return [fixed]
+  }
   if (!spec || spec.mode === 'fixed') {
     return [spec?.value]
   }
@@ -120,67 +129,26 @@ function evaluateCombinations(variables, inputs, combos) {
   const outputKeys = outputs.filter(v => v.symbol || v.name).map(v => v.symbol || v.name)
 
   const rows = combos.map((combo) => {
-    const symbolMap = {}
+    // 계산 절차는 calcEngine 하나가 안다. 예전에는 여기와 카드 화면에 같은
+    // 반복 계산이 두 벌 있었고, 한쪽만 고치면 "화면과 DOE 결과가 다른" 상태가
+    // 됐다. 여기서는 변수 id 로 값을 넘기고 결과를 기호 키로 바꿔 담기만 한다.
+    const values = {}
+    inputs.forEach((v, idx) => { values[v.id] = combo[idx] })
+
+    const { results } = calculateCard(variables, values)
+
     const row = { __errors: {} }
-
-    // 입력 값 세팅
-    inputs.forEach((v, idx) => {
+    inputs.forEach((v, idx) => { row[v.symbol || v.name] = combo[idx] })
+    ;[...intermediates, ...outputs].forEach(v => {
       const key = v.symbol || v.name
-      const val = combo[idx]
-      if (v.symbol) symbolMap[v.symbol] = val
-      row[key] = val
-    })
-
-    // 중간값: fixed-point iteration (상호 참조 해결)
-    const pending = intermediates.filter(v => hasDefinition(v))
-    const missing = intermediates.filter(v => !hasDefinition(v))
-    missing.forEach(v => {
-      const key = v.symbol || v.name
-      row[key] = null
-      row.__errors[key] = missingLabel(v)
-    })
-    let remaining = [...pending]
-    let progressed = true
-    while (progressed && remaining.length > 0) {
-      progressed = false
-      const next = []
-      for (const v of remaining) {
-        const result = evaluateVariable(v, symbolMap)
-        if (result.value !== null) {
-          const key = v.symbol || v.name
-          row[key] = result.value
-          if (v.symbol) symbolMap[v.symbol] = result.value
-          progressed = true
-        } else {
-          next.push(v)
-        }
-      }
-      remaining = next
-    }
-    remaining.forEach(v => {
-      const key = v.symbol || v.name
-      const r = evaluateVariable(v, symbolMap)
+      const r = results[v.id] || { value: null, error: '계산되지 않음' }
       row[key] = r.value
       if (r.error) row.__errors[key] = r.error
     })
-
-    // 출력값
-    outputs.forEach(v => {
-      const key = v.symbol || v.name
-      if (!hasDefinition(v)) {
-        row[key] = null
-        row.__errors[key] = missingLabel(v)
-        return
-      }
-      const r = evaluateVariable(v, symbolMap)
-      row[key] = r.value
-      if (r.error) row.__errors[key] = r.error
-      if (v.symbol && r.value !== null) symbolMap[v.symbol] = r.value
-    })
-
     return row
   })
 
+  
   return { inputKeys, intermediateKeys, outputKeys, rows }
 }
 
@@ -224,20 +192,6 @@ export function runLhs(variables, specs, numSamples, seed) {
 // 하위 호환 — 기존 runDoe 시그니처 유지 (Full Factorial)
 export function runDoe(variables, specs) {
   return runFactorial(variables, specs)
-}
-
-function hasDefinition(v) {
-  if (v.var_type === 'table') return !!v.table_data
-  if (v.var_type === 'conditional') return !!v.conditional_data
-  if (v.var_type === 'interp_table') return !!v.interp_data
-  return !!v.formula
-}
-
-function missingLabel(v) {
-  if (v.var_type === 'table') return '테이블 정의 없음'
-  if (v.var_type === 'conditional') return '조건부 정의 없음'
-  if (v.var_type === 'interp_table') return '보간 테이블 정의 없음'
-  return '수식 없음'
 }
 
 // CSV 문자열 생성

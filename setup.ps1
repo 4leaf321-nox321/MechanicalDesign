@@ -1,10 +1,13 @@
-﻿# Mechanical Design - First-time Setup (Windows)
+﻿# Mechanical Design - First-time Setup (개발 PC, Windows)
+#
+# **개발 PC 전용이다.** 운영 서버는 릴리스 패키지로 배포한다 — scripts\deploy\install.ps1
+# 과 배포방법.md 를 쓴다. 여기서 만드는 backend\venv 와 frontend\dist 는 이 PC 에서만 쓰인다.
 #
 # Usage:
 #   .\setup.ps1
 #
 # 사전 조건:
-#   - Python 3.11+ (PATH 등록)
+#   - Python 3.13 (릴리스 wheel 이 3.13 기준. PATH 등록)
 #   - Node.js 18+ (PATH 등록)
 #   - PostgreSQL 16+ (psql이 PATH에 있거나 -PgBinDir 인자로 경로 지정)
 #   - backend\.env 파일 작성 완료 (없으면 .env.example 복사 후 편집)
@@ -12,6 +15,8 @@
 [CmdletBinding()]
 param(
     [string]$PgBinDir = "",
+    [string]$AdminEmail = 'admin',
+    [string]$AdminPassword = '32167',
     [switch]$SkipDbCreate
 )
 
@@ -122,6 +127,22 @@ try {
     Pop-Location
 }
 
+# === 3-1. 개발용 관리자 계정 ===
+# 인증이 붙은 뒤로는 계정이 없으면 화면을 볼 수 없다. 개발 PC 라 비밀번호를
+# 고정값으로 둔다 — 운영 설치(scripts\deploy\install.ps1)는 난수를 쓰고
+# 첫 로그인에서 변경을 강제한다.
+#
+# 이미 있으면 비밀번호를 바꾸지 않는다.
+Write-Step "개발용 관리자 계정"
+Push-Location $Backend
+try {
+    $py = Join-Path $Backend "venv\Scripts\python.exe"
+    & $py scripts\seed_install.py --email $AdminEmail --password $AdminPassword --no-force-change
+    if ($LASTEXITCODE -ne 0) { throw "관리자 계정 생성 실패" }
+} finally {
+    Pop-Location
+}
+
 # === 4. 프론트엔드: 의존성 + 빌드 ===
 Write-Step "프론트엔드 의존성 설치 및 빌드"
 Push-Location $Frontend
@@ -143,6 +164,9 @@ Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "  Setup 완료" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "로그인:" -ForegroundColor Yellow
+Write-Host "  $AdminEmail  /  $AdminPassword"
 Write-Host ""
 Write-Host "실행:" -ForegroundColor Yellow
 Write-Host "  cd backend"

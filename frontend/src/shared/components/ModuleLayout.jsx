@@ -90,7 +90,7 @@ const Content = styled.main`
   padding: 24px 32px;
 `
 
-function ModuleLayout({ title, onGoHome, onSettings, editMode, onToggleEditMode, children }) {
+function ModuleLayout({ title, onGoHome, onSettings, onHistory, onValidate, editMode, onToggleEditMode, children }) {
   return (
     <Wrapper>
       <Header>
@@ -103,6 +103,12 @@ function ModuleLayout({ title, onGoHome, onSettings, editMode, onToggleEditMode,
             <EditModeBtn $active={editMode} onClick={onToggleEditMode}>
               {editMode ? '편집 완료' : '레이아웃 편집'}
             </EditModeBtn>
+          )}
+          {onValidate && (
+            <SettingsButton onClick={onValidate}>검증</SettingsButton>
+          )}
+          {onHistory && (
+            <SettingsButton onClick={onHistory}>변경 이력</SettingsButton>
           )}
           {onSettings && (
             <SettingsButton onClick={onSettings}>⚙ 설정</SettingsButton>

@@ -3,12 +3,100 @@ import { useLocation } from 'react-router-dom'
 import styled from 'styled-components'
 import ModuleLayout from './ModuleLayout'
 import SettingsPanel from './Settings/SettingsPanel'
+import HistoryPanel from './HistoryPanel'
+import ValidationPanel from './ValidationPanel'
 import InputVariables from './InputVariables'
 import DoeInputPanel from './DOE/DoeInputPanel'
 import DoeResultsView from './DOE/DoeResultsView'
 import { runFactorial, runLhs, combinationCount, expandRange } from '../utils/doeEngine'
+import { apiFetch } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+/**
+ * 카드 상태 배너.
+ *
+ * **목록의 배지만으로는 부족하다.** 사람은 주소를 저장해 두고 카드로 바로
+ * 들어오며, 실제로 그 숫자를 보고 판단하는 자리가 여기다. 목록을 거쳐 오지
+ * 않은 사람에게는 배지가 아예 보이지 않는다.
+ */
+const Banner = styled.div`
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  background: ${p => (p.$warn ? '#fdecea' : '#fff8e1')};
+  border: 1px solid ${p => (p.$warn ? '#f5c6cb' : '#f0d98c')};
+  color: ${p => (p.$warn ? '#a4343a' : '#8a6d1a')};
+`
+
+const BannerTitle = styled.strong`
+  display: block;
+  margin-bottom: 3px;
+`
+
+/**
+ * 계산 기록 저장 바.
+ *
+ * **계산 버튼 옆이 아니라 여기 있는 이유**: 계산 버튼은 입력 컨테이너마다 하나씩
+ * 있을 수 있어서, 거기에 저장을 붙이면 저장 버튼이 여러 개 생긴다. 기록은 카드
+ * 전체의 일이라 카드 수준에 한 번만 둔다.
+ *
+ * 계산을 한 뒤에만 뜬다. 입력을 바꾸면 다시 사라진다 — 화면에 없는 옛 숫자가
+ * 기록으로 저장되는 것이 이 기능에서 가장 나쁜 실패다.
+ */
+const SaveBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #f1f7fd;
+  border: 1px solid #cfe3f7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 16px;
+`
+
+const SaveHint = styled.span`
+  font-size: 0.85rem;
+  color: #34618c;
+  flex: 1 1 200px;
+`
+
+const SaveInput = styled.input`
+  flex: 2 1 260px;
+  padding: 9px 12px;
+  border: 1px solid #cfe3f7;
+  border-radius: 6px;
+  font-size: 0.9rem;
+
+  &:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+`
+
+const SaveBtn = styled.button`
+  padding: 9px 18px;
+  background: #2980b9;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: #2471a3; }
+  &:disabled { background: #aab; cursor: not-allowed; }
+`
+
+const SaveMsg = styled.span`
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${p => (p.$error ? '#a4343a' : '#2f6b34')};
+  flex-basis: 100%;
+`
 
 const ModeTabs = styled.div`
   display: flex;
@@ -153,7 +241,17 @@ function ModulePlaceholder({ onGoHome }) {
   const [images, setImages] = useState([])
   const [inputValues, setInputValues] = useState({})
   const [showSettings, setShowSettings] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showValidation, setShowValidation] = useState(false)
+  const { user } = useAuth()
   const [editMode, setEditMode] = useState(false)
+
+  // 마지막 계산 결과. null 이면 아직 계산하지 않았거나 입력이 바뀌어
+  // 결과가 무효가 된 것이다 — 그때는 저장할 것이 없다.
+  const [lastResults, setLastResults] = useState(null)
+  const [recordTitle, setRecordTitle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState(null)
 
   // DOE 모드 상태
   const [mode, setMode] = useState('single')      // 'single' | 'doe'
@@ -168,7 +266,7 @@ function ModulePlaceholder({ onGoHome }) {
   useEffect(() => {
     const fetchCard = async () => {
       try {
-        const res = await fetch(`${API_URL}/cards`)
+        const res = await apiFetch(`/cards`)
         if (!res.ok) return
         const text = await res.text()
         if (!text) return
@@ -187,9 +285,9 @@ function ModulePlaceholder({ onGoHome }) {
     if (!card) return
     try {
       const [varsRes, ctnsRes, imgsRes] = await Promise.all([
-        fetch(`${API_URL}/cards/${card.id}/variables`),
-        fetch(`${API_URL}/cards/${card.id}/containers`),
-        fetch(`${API_URL}/cards/${card.id}/images`),
+        apiFetch(`/cards/${card.id}/variables`),
+        apiFetch(`/cards/${card.id}/containers`),
+        apiFetch(`/cards/${card.id}/images`),
       ])
       if (varsRes.ok) {
         const text = await varsRes.text()
@@ -220,7 +318,7 @@ function ModulePlaceholder({ onGoHome }) {
   const handleLayoutChange = async (layouts) => {
     if (!card) return
     try {
-      const res = await fetch(`${API_URL}/cards/${card.id}/containers/layout`, {
+      const res = await apiFetch(`/cards/${card.id}/containers/layout`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ layouts }),
@@ -265,16 +363,73 @@ function ModulePlaceholder({ onGoHome }) {
     }, 30)
   }
 
+  const handleCalculated = useCallback((results) => {
+    setLastResults(results)
+    setSaveMsg(null)
+  }, [])
+
+  const handleSaveRecord = async () => {
+    if (!card || !lastResults) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      const res = await apiFetch('/records', {
+        method: 'POST',
+        body: JSON.stringify({
+          card_id: card.id,
+          title: recordTitle,
+          // 화면이 보여 준 바로 그 숫자를 보낸다. 서버가 다시 계산해 넣으면
+          // 둘이 어긋나는 날 어느 쪽을 믿어야 할지 알 수 없게 된다.
+          inputs: inputValues,
+          results: lastResults,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        setSaveMsg({ error: true, text: body.error || '기록을 저장하지 못했습니다.' })
+        return
+      }
+      setRecordTitle('')
+      setSaveMsg({ error: false, text: `'${body.title}' 로 저장했습니다.` })
+    } catch (err) {
+      setSaveMsg({ error: true, text: '기록을 저장하지 못했습니다: ' + err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const renderSingleMode = () => (
-    <InputVariables
-      variables={variables}
-      containers={containers}
-      images={images}
-      values={inputValues}
-      onChange={setInputValues}
-      editMode={editMode}
-      onLayoutChange={handleLayoutChange}
-    />
+    <>
+      <InputVariables
+        variables={variables}
+        containers={containers}
+        images={images}
+        values={inputValues}
+        onChange={setInputValues}
+        editMode={editMode}
+        onLayoutChange={handleLayoutChange}
+        onCalculated={handleCalculated}
+      />
+
+      {lastResults && !editMode && (
+        <SaveBar>
+          <SaveHint>
+            이 계산을 남겨 두면 나중에 그때 값을 그대로 다시 볼 수 있습니다.
+          </SaveHint>
+          <SaveInput
+            value={recordTitle}
+            onChange={(e) => setRecordTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && recordTitle.trim()) handleSaveRecord() }}
+            placeholder="무슨 계산인가요? 예: Model X 브래킷 볼트"
+            maxLength={200}
+          />
+          <SaveBtn onClick={handleSaveRecord} disabled={saving || !recordTitle.trim()}>
+            {saving ? '저장 중…' : '기록 저장'}
+          </SaveBtn>
+          {saveMsg && <SaveMsg $error={saveMsg.error}>{saveMsg.text}</SaveMsg>}
+        </SaveBar>
+      )}
+    </>
   )
 
   const renderDoeMode = () => (
@@ -365,9 +520,27 @@ function ModulePlaceholder({ onGoHome }) {
         title={card?.name || '모듈'}
         onGoHome={onGoHome}
         onSettings={card ? () => setShowSettings(true) : undefined}
+        onHistory={card ? () => setShowHistory(true) : undefined}
+        onValidate={card ? () => setShowValidation(true) : undefined}
         editMode={mode === 'single' ? editMode : false}
         onToggleEditMode={mode === 'single' ? () => setEditMode(prev => !prev) : undefined}
       >
+        {card?.ai_edited_after_publish && (
+          <Banner $warn>
+            <BannerTitle>게시 후 AI 가 이 카드를 수정했습니다</BannerTitle>
+            게시할 때 사람이 확인한 내용과 지금 내용이 다를 수 있습니다.
+            결과를 쓰기 전에 수식을 한 번 살펴보세요.
+          </Banner>
+        )}
+        {card?.status === 'draft' && (
+          <Banner>
+            <BannerTitle>초안입니다 — 아직 다른 사람에게 보이지 않습니다</BannerTitle>
+            {card.origin === 'mcp'
+              ? 'AI 가 만든 카드입니다. 계산이 돈다는 것과 값이 맞다는 것은 다릅니다 — 숫자를 확인한 뒤 홈에서 게시하세요.'
+              : '홈 화면에서 게시하면 모두가 쓸 수 있게 됩니다.'}
+          </Banner>
+        )}
+
         <ModeTabs>
           <ModeTab $active={mode === 'single'} onClick={() => setMode('single')}>단일 계산</ModeTab>
           <ModeTab $active={mode === 'doe'} onClick={() => setMode('doe')}>DOE 탐색</ModeTab>
@@ -375,6 +548,25 @@ function ModulePlaceholder({ onGoHome }) {
 
         {mode === 'single' ? renderSingleMode() : renderDoeMode()}
       </ModuleLayout>
+
+      {showValidation && card && (
+        <ValidationPanel
+          cardId={card.id}
+          cardName={card.name}
+          values={inputValues}
+          onClose={() => setShowValidation(false)}
+        />
+      )}
+
+      {showHistory && card && (
+        <HistoryPanel
+          cardId={card.id}
+          cardName={card.name}
+          canRestore={!!user && (user.is_admin || user.id === card.created_by_id)}
+          onClose={() => setShowHistory(false)}
+          onRestored={fetchData}
+        />
+      )}
 
       {showSettings && card && (
         <SettingsPanel

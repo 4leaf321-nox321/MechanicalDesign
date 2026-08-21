@@ -1,10 +1,23 @@
+# ASCII only. Do not put Korean (or any non-ASCII) text in this file.
+#
+# pip decodes requirements.txt with the *locale* codec when the file has no BOM.
+# On a Korean Windows server that is cp949, so a single Korean comment makes
+# `pip install -r requirements.txt` die with UnicodeDecodeError -- which happens
+# on the deployment target, not on the machine that wrote the comment.
+#
+# Rationale for the auth libraries below is in app/extensions.py and
+# app/modules/auth/models.py.
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 Flask-CORS==4.0.0
-Flask-JWT-Extended==4.6.0
-Flask-Bcrypt==1.0.1
 SQLAlchemy==2.0.36
 psycopg[binary]==3.2.3
 python-dotenv==1.0.0
 waitress==3.0.0
+
+# Auth: the raw libraries, not the Flask wrappers.
+# Flask-JWT-Extended's refresh tokens are stateless JWTs and cannot be revoked;
+# Flask-Bcrypt only adds a layer over work we have to do ourselves anyway.
+PyJWT==2.13.0
+bcrypt==5.0.0

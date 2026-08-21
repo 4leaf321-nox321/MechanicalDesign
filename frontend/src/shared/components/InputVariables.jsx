@@ -3,9 +3,13 @@ import styled from 'styled-components'
 import { ReactGridLayout, WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
-import { evaluateVariable } from '../utils/evaluators'
+import AuthedImage from './AuthedImage'
+import { groupByContainer, unplaced } from '../utils/placements'
+import { flattenClipboardCells } from '../utils/clipboard'
+import ArrayResult from './ArrayResult'
+import { calculateCard, defaultInputValue } from '../utils/calcEngine'
+import { fromDeclared, hasChoices, toDeclared } from '../utils/unitConvert'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
 const ResponsiveGridLayout = WidthProvider(ReactGridLayout)
 
 // ============================================
@@ -213,6 +217,26 @@ const DropdownSelect = styled.select`
   &:focus { border-color: #3498db; }
 `
 
+/**
+ * 단위 고르는 칸.
+ *
+ * 글자로만 적혀 있던 자리를 고를 수 있는 칸으로 바꾼다. 고를 것이 하나뿐인
+ * 변수(단위를 안 적었거나 무차원)는 예전처럼 글자로만 둔다 — 못 고르는
+ * 드롭다운은 누를 수 있는 것처럼 보여서 헷갈리게만 한다.
+ */
+const UnitSelect = styled.select`
+  padding: 6px 4px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #444;
+  background: #fafbfc;
+  cursor: pointer;
+  outline: none;
+  min-width: 62px;
+  &:focus { border-color: #3498db; }
+`
+
 const InputUnit = styled.span`
   font-size: 0.85rem;
   color: #666;
@@ -300,20 +324,40 @@ function parseDropdownOptions(v) {
   }
 }
 
-function getDefaultInputValue(v) {
-  if (v.var_type === 'slider') return v.min_value
-  if (v.var_type === 'dropdown') {
-    const opts = parseDropdownOptions(v)
-    return opts[0] ?? ''
-  }
-  return ''
+/**
+ * 배열 입력은 화면에서 "10, 20, 30" 처럼 글자로 다룬다.
+ *
+ * 값 자체는 숫자 배열로 들고 있어야 계산에서 그대로 쓸 수 있다. 글자로만 두면
+ * 수식마다 다시 쪼개야 하고, 쪼개는 규칙이 여러 곳에 흩어진다.
+ */
+function arrayToText(value) {
+  if (!Array.isArray(value)) return ''
+  return value.join(', ')
 }
+
+function textToArray(text) {
+  // 입력 도중에는 "10, " 처럼 끝이 비어 있다. 그건 아직 값이 아니므로 버린다.
+  return String(text ?? '')
+    .split(/[,\s]+/)
+    .filter(s => s !== '')
+    .map(s => Number(s))
+    .filter(n => Number.isFinite(n))
+}
+
+
 
 // ============================================
 // Sub-components
 // ============================================
 function formatComputed(value) {
   if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) {
+    // 긴 배열을 통째로 늘어놓으면 칸을 넘겨 화면이 무너진다. 앞뒤만 보여 주고
+    // 개수를 함께 적어 "몇 개짜리인지" 를 알 수 있게 한다.
+    const shown = value.slice(0, 8).map(formatComputed)
+    const more = value.length > 8 ? `, … (총 ${value.length}개)` : ''
+    return `[${shown.join(', ')}${more}]`
+  }
   if (typeof value === 'string') return value
   if (typeof value === 'number') {
     if (Number.isInteger(value)) return String(value)
@@ -322,19 +366,46 @@ function formatComputed(value) {
   return String(value)
 }
 
+const OutputBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+  min-width: 0;
+
+  &:last-child { border-bottom: none; }
+`
+
 function OutputVar({ v, computedValue, error }) {
   const isString = typeof computedValue === 'string'
+  const isArray = !error && Array.isArray(computedValue)
   const displayValue = error ? error : formatComputed(computedValue)
+
+  const label = (
+    <OutputLabel>
+      <OutputName>{v.name}</OutputName>
+      {v.symbol && <OutputSymbol>({v.symbol})</OutputSymbol>}
+      {v.var_type === 'formula' && v.formula && <OutputFormula>= {v.formula}</OutputFormula>}
+      {v.var_type === 'table' && <OutputFormula>= 테이블 조회</OutputFormula>}
+      {v.var_type === 'interp_table' && <OutputFormula>= 보간 테이블</OutputFormula>}
+      {v.var_type === 'conditional' && <OutputFormula>= 조건부</OutputFormula>}
+    </OutputLabel>
+  )
+
+  // 배열은 한 줄로 찍으면 읽을 수가 없다. 그래프·표로 따로 보여 준다.
+  if (isArray) {
+    return (
+      <OutputBlock>
+        {label}
+        <ArrayResult values={computedValue} unit={v.unit} name={v.name} />
+      </OutputBlock>
+    )
+  }
+
   return (
     <OutputRow>
-      <OutputLabel>
-        <OutputName>{v.name}</OutputName>
-        {v.symbol && <OutputSymbol>({v.symbol})</OutputSymbol>}
-        {v.var_type === 'formula' && v.formula && <OutputFormula>= {v.formula}</OutputFormula>}
-        {v.var_type === 'table' && <OutputFormula>= 테이블 조회</OutputFormula>}
-        {v.var_type === 'interp_table' && <OutputFormula>= 보간 테이블</OutputFormula>}
-        {v.var_type === 'conditional' && <OutputFormula>= 조건부</OutputFormula>}
-      </OutputLabel>
+      {label}
       <OutputValue $error={!!error}>
         {displayValue}
         {!error && !isString && v.unit && ` ${v.unit}`}
@@ -388,25 +459,108 @@ function VarInput({ v, currentValue, onChange }) {
           </DropdownSelect>
           {v.unit && <InputUnit>{v.unit}</InputUnit>}
         </TextInputWrapper>
-      ) : (
+      ) : v.var_type === 'array' ? (
         <TextInputWrapper>
           <TextInput
             type="text"
-            value={currentValue}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={`값 입력${v.unit ? ` (${v.unit})` : ''}`}
+            value={arrayToText(currentValue)}
+            onChange={(e) => onChange(textToArray(e.target.value))}
+            onPaste={(e) => {
+              // 엑셀에서 한 줄·한 칸씩 복사한 것을 그대로 받는다.
+              const cells = flattenClipboardCells(e.clipboardData?.getData('text'))
+              if (!cells) return
+              e.preventDefault()
+              onChange(cells.map(c => Number(c)).filter(n => Number.isFinite(n)))
+            }}
+            placeholder={`쉼표로 구분 (예: 10, 20, 30)${v.unit ? ` [${v.unit}]` : ''}`}
           />
-          {v.unit && <InputUnit>{v.unit}</InputUnit>}
+          <InputUnit>
+            {Array.isArray(currentValue) ? `${currentValue.length}개` : '0개'}
+            {v.unit && ` ${v.unit}`}
+          </InputUnit>
         </TextInputWrapper>
+      ) : (
+        <UnitizedInput v={v} currentValue={currentValue} onChange={onChange} />
       )}
     </VarRow>
+  )
+}
+
+/**
+ * 단위를 골라 넣는 칸.
+ *
+ * **여기가 없으면 "N 칸에 kN 값을 넣는" 실수를 막을 방법이 없다.** 정의가
+ * 맞는지는 검증이 보지만, 넣은 숫자가 어느 단위인지는 사람 머릿속에만 있다.
+ *
+ * 계산에 들어가는 값은 **언제나 선언 단위**다. 고른 단위는 넣는 방식일 뿐이라
+ * 저장되지도, 계산에 쓰이지도 않는다.
+ *
+ * 친 글자를 그대로 들고 있는 이유: 환산한 값을 되돌려 칸에 넣으면 `1.5` 를
+ * 치는 도중에 `1.` 이 `1` 로 바뀌어 소수점을 찍을 수가 없다.
+ */
+function UnitizedInput({ v, currentValue, onChange }) {
+  const info = v.unit_info
+  const [unit, setUnit] = React.useState(info ? info.unit : v.unit || '')
+  const [typed, setTyped] = React.useState(null)
+  const emitted = React.useRef(null)
+
+  // 밖에서 값이 바뀌면(초기화·기록 불러오기) 친 글자는 버린다.
+  //
+  // **우리가 일으킨 변경은 빼야 한다.** 글자를 칠 때마다 onChange 로 값이
+  // 바뀌는데, 그것까지 "밖에서 바뀌었다" 로 보면 친 글자가 매번 지워진다.
+  // 그러면 kN 칸에 '1.' 을 친 순간 '1' 로 되돌아가 소수점을 찍을 수가 없다.
+  React.useEffect(() => {
+    if (emitted.current !== null && currentValue === emitted.current) return
+    setTyped(null)
+  }, [currentValue])
+
+  const shown = typed !== null
+    ? typed
+    : (info ? fromDeclared(currentValue, info, unit) : (currentValue ?? ''))
+
+  const handleType = (text) => {
+    setTyped(text)
+    const value = info ? toDeclared(text, info, unit) : text
+    emitted.current = value
+    onChange(value)
+  }
+
+  const handleUnit = (next) => {
+    // **값은 그대로 두고 보이는 표기만 바꾼다.** 여기서 onChange 를 부르면
+    // 단위를 고르는 것만으로 값이 바뀌어 버린다.
+    setUnit(next)
+    setTyped(null)
+  }
+
+  return (
+    <TextInputWrapper>
+      <TextInput
+        type="text"
+        value={shown}
+        onChange={(e) => handleType(e.target.value)}
+        placeholder={`값 입력${unit ? ` (${unit})` : ''}`}
+      />
+      {hasChoices(info) ? (
+        <UnitSelect
+          value={unit}
+          onChange={(e) => handleUnit(e.target.value)}
+          title={`이 값을 넣을 단위. 계산에는 ${info.unit} 로 환산해 들어갑니다.`}
+        >
+          {info.alternatives.map(a => (
+            <option key={a.unit} value={a.unit}>{a.unit}</option>
+          ))}
+        </UnitSelect>
+      ) : (
+        v.unit && <InputUnit>{v.unit}</InputUnit>
+      )}
+    </TextInputWrapper>
   )
 }
 
 // ============================================
 // Main Component
 // ============================================
-function InputVariables({ variables, containers, images = [], values, onChange, editMode, onLayoutChange }) {
+function InputVariables({ variables, containers, images = [], values, onChange, editMode, onLayoutChange, onCalculated }) {
   const [calculated, setCalculated] = useState(false)
   const [computedOutputs, setComputedOutputs] = useState({})
 
@@ -416,117 +570,40 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
 
   const handleChange = (varId, newValue) => {
     setCalculated(false)
+    // 입력이 바뀌면 화면의 결과는 지워진다. 바깥도 그 사실을 알아야 한다 —
+    // 모르면 **화면에 없는 옛 숫자를 기록으로 저장**하게 된다.
+    if (onCalculated) onCalculated(null)
     onChange({ ...values, [varId]: newValue })
   }
 
   const handleCalculate = () => {
-    const symbolMap = {}
-    variables.forEach(v => {
-      if (v.symbol && v.category === 'input') {
-        symbolMap[v.symbol] = values[v.id] ?? getDefaultInputValue(v)
-      }
-    })
-
-    const results = {}
-    const hasDefinition = (v) => {
-      if (v.var_type === 'table') return !!v.table_data
-      if (v.var_type === 'conditional') return !!v.conditional_data
-      if (v.var_type === 'interp_table') return !!v.interp_data
-      return !!v.formula
-    }
-    const missingLabel = (v) => {
-      if (v.var_type === 'table') return '테이블 정의 없음'
-      if (v.var_type === 'conditional') return '조건부 정의 없음'
-      if (v.var_type === 'interp_table') return '보간 테이블 정의 없음'
-      return '수식 없음'
-    }
-
-    // 중간값 계산 — 서로 참조할 수 있으므로 해결될 때까지 반복
-    intermediateVars.forEach(v => {
-      if (!hasDefinition(v)) {
-        results[v.id] = { value: null, error: missingLabel(v) }
-      }
-    })
-    const pending = intermediateVars.filter(hasDefinition)
-    let progressed = true
-    let remaining = [...pending]
-    while (progressed && remaining.length > 0) {
-      progressed = false
-      const next = []
-      for (const v of remaining) {
-        const result = evaluateVariable(v, symbolMap)
-        if (result.value !== null) {
-          results[v.id] = result
-          if (v.symbol) symbolMap[v.symbol] = result.value
-          progressed = true
-        } else {
-          next.push(v)
-        }
-      }
-      remaining = next
-    }
-    // 끝까지 해결 못한 중간값은 마지막 에러 상태로 기록
-    remaining.forEach(v => {
-      results[v.id] = evaluateVariable(v, symbolMap)
-    })
-
-    outputVars.forEach(v => {
-      if (hasDefinition(v)) {
-        const result = evaluateVariable(v, symbolMap)
-        results[v.id] = result
-        if (v.symbol && result.value !== null) symbolMap[v.symbol] = result.value
-      } else {
-        results[v.id] = { value: null, error: missingLabel(v) }
-      }
-    })
+    // 계산 절차는 calcEngine 하나가 안다 — DOE 러너와 서버 검증도 같은 것을 쓴다.
+    const { results } = calculateCard(variables, values)
     setComputedOutputs(results)
     setCalculated(true)
+    // 기록 저장은 카드 전체의 일이라 바깥이 맡는다. 계산 버튼은 컨테이너마다
+    // 있을 수 있어서 여기에 저장 버튼을 두면 여러 개가 생긴다.
+    if (onCalculated) onCalculated(results)
   }
 
   // --- 변수 그룹핑 ---
-  const inputByContainer = {}
-  const inputUnassigned = []
-  inputVars.forEach(v => {
-    if (v.container_id) {
-      if (!inputByContainer[v.container_id]) inputByContainer[v.container_id] = []
-      inputByContainer[v.container_id].push(v)
-    } else {
-      inputUnassigned.push(v)
-    }
-  })
+  //
+  // 한 변수가 여러 컨테이너에 놓일 수 있다. 그래서 같은 변수가 아래 맵에 두 번
+  // 이상 나올 수 있고, 그것이 의도다 — 값은 하나이므로 어느 쪽을 고쳐도 함께
+  // 바뀐다(입력값이 varId 로 키잉되어 있다).
+  const inputByContainer = groupByContainer(inputVars)
+  const inputUnassigned = unplaced(inputVars)
 
-  const intermediateByContainer = {}
-  const intermediateUnassigned = []
-  intermediateVars.forEach(v => {
-    if (v.container_id) {
-      if (!intermediateByContainer[v.container_id]) intermediateByContainer[v.container_id] = []
-      intermediateByContainer[v.container_id].push(v)
-    } else {
-      intermediateUnassigned.push(v)
-    }
-  })
+  const intermediateByContainer = groupByContainer(intermediateVars)
+  const intermediateUnassigned = unplaced(intermediateVars)
 
-  const outputByContainer = {}
-  const outputUnassigned = []
-  outputVars.forEach(v => {
-    if (v.container_id) {
-      if (!outputByContainer[v.container_id]) outputByContainer[v.container_id] = []
-      outputByContainer[v.container_id].push(v)
-    } else {
-      outputUnassigned.push(v)
-    }
-  })
+  const outputByContainer = groupByContainer(outputVars)
+  const outputUnassigned = unplaced(outputVars)
 
   const containerMap = {}
   containers.forEach(c => { containerMap[c.id] = c })
 
-  const imagesByContainer = {}
-  images.forEach(img => {
-    if (img.container_id) {
-      if (!imagesByContainer[img.container_id]) imagesByContainer[img.container_id] = []
-      imagesByContainer[img.container_id].push(img)
-    }
-  })
+  const imagesByContainer = groupByContainer(images)
 
   const activeContainerIds = containers
     .filter(c => inputByContainer[c.id] || intermediateByContainer[c.id] || outputByContainer[c.id] || imagesByContainer[c.id])
@@ -629,7 +706,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
           <ImageArea>
             {imgs.map(img => (
               <ImageBlock key={img.id}>
-                <img src={`${API_URL}/cards/${img.card_id}/images/${img.id}/file`} alt={img.filename} />
+                <AuthedImage path={`/cards/${img.card_id}/images/${img.id}/file`} alt={img.filename} />
               </ImageBlock>
             ))}
           </ImageArea>
@@ -638,7 +715,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
           {inVars.map(v => (
             <VarInput
               key={v.id} v={v}
-              currentValue={values[v.id] ?? getDefaultInputValue(v)}
+              currentValue={values[v.id] ?? defaultInputValue(v)}
               onChange={(val) => handleChange(v.id, val)}
             />
           ))}
@@ -691,7 +768,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
                 <ContainerContent>
                   {inputUnassigned.map(v => (
                     <VarInput key={v.id} v={v}
-                      currentValue={values[v.id] ?? getDefaultInputValue(v)}
+                      currentValue={values[v.id] ?? defaultInputValue(v)}
                       onChange={(val) => handleChange(v.id, val)}
                     />
                   ))}

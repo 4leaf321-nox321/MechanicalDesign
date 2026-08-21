@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import styled from 'styled-components'
+import { apiFetch } from '../../api/client'
+import { TabPane, TabScroll, TabToolbar } from './TabLayout'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const ContainerCard = styled.div`
   background: #f8f9fa;
@@ -60,7 +61,6 @@ const TypeBadge = styled.span`
 const AddRow = styled.div`
   display: flex;
   gap: 10px;
-  margin-top: 16px;
 `
 
 const Input = styled.input`
@@ -132,7 +132,7 @@ function ContainerTab({ cardId, containers, onRefresh }) {
     if (!newName.trim()) return
     setError('')
     try {
-      const res = await fetch(`${API_URL}/cards/${cardId}/containers`, {
+      const res = await apiFetch(`/cards/${cardId}/containers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -158,7 +158,7 @@ function ContainerTab({ cardId, containers, onRefresh }) {
   const handleUpdate = async (id) => {
     if (!editName.trim()) return
     try {
-      await fetch(`${API_URL}/cards/${cardId}/containers/${id}`, {
+      await apiFetch(`/cards/${cardId}/containers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,7 +176,7 @@ function ContainerTab({ cardId, containers, onRefresh }) {
 
   const handleDelete = async (id) => {
     try {
-      await fetch(`${API_URL}/cards/${cardId}/containers/${id}`, { method: 'DELETE' })
+      await apiFetch(`/cards/${cardId}/containers/${id}`, { method: 'DELETE' })
       onRefresh()
     } catch {
       setError('삭제 실패')
@@ -203,7 +203,31 @@ function ContainerTab({ cardId, containers, onRefresh }) {
   }
 
   return (
-    <>
+    <TabPane>
+      <TabToolbar>
+        <AddRow>
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => handleKeyDown(e, handleAdd)}
+            placeholder="새 컨테이너 이름"
+          />
+          <Select value={newType} onChange={(e) => setNewType(e.target.value)}>
+            <option value="default">일반</option>
+            <option value="input">입력</option>
+            <option value="output">출력</option>
+            <option value="hidden">숨김</option>
+          </Select>
+          <Select value={newColumnCount} onChange={(e) => setNewColumnCount(Number(e.target.value))}>
+            {[1, 2, 3, 4, 5, 6].map(n => (
+              <option key={n} value={n}>{n}열</option>
+            ))}
+          </Select>
+          <AddBtn onClick={handleAdd} disabled={!newName.trim()}>추가</AddBtn>
+        </AddRow>
+        {error && <ErrorMsg>{error}</ErrorMsg>}
+      </TabToolbar>
+      <TabScroll>
       {containers.length === 0 ? (
         <EmptyState>정의된 컨테이너가 없습니다.</EmptyState>
       ) : (
@@ -247,29 +271,8 @@ function ContainerTab({ cardId, containers, onRefresh }) {
           </ContainerCard>
         ))
       )}
-
-      <AddRow>
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => handleKeyDown(e, handleAdd)}
-          placeholder="새 컨테이너 이름"
-        />
-        <Select value={newType} onChange={(e) => setNewType(e.target.value)}>
-          <option value="default">일반</option>
-          <option value="input">입력</option>
-          <option value="output">출력</option>
-          <option value="hidden">숨김</option>
-        </Select>
-        <Select value={newColumnCount} onChange={(e) => setNewColumnCount(Number(e.target.value))}>
-          {[1, 2, 3, 4, 5, 6].map(n => (
-            <option key={n} value={n}>{n}열</option>
-          ))}
-        </Select>
-        <AddBtn onClick={handleAdd} disabled={!newName.trim()}>추가</AddBtn>
-      </AddRow>
-      {error && <ErrorMsg>{error}</ErrorMsg>}
-    </>
+      </TabScroll>
+    </TabPane>
   )
 }
 

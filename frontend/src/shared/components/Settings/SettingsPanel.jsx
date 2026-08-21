@@ -4,8 +4,11 @@ import VariableForm from './VariableForm'
 import ContainerTab from './ContainerTab'
 import ImageTab from './ImageTab'
 import WidgetLayoutTab from './WidgetLayoutTab'
+import { apiFetch } from '../../api/client'
+import { TabPane, TabScroll, TabToolbar } from './TabLayout'
+import { placedContainerIds } from '../../utils/placements'
+import TableDefinitionTab from './TableDefinitionTab'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // ============================================
 // Styled Components
@@ -84,19 +87,17 @@ const Tab = styled.button`
   }
 `
 
+// **여기서 스크롤하지 않는다.** 툴바(추가·업로드 줄)를 스크롤 밖에 두려면
+// 스크롤 컨테이너가 그 아래에 있어야 한다 — TabLayout 의 TabScroll 이 맡는다.
+// 아래쪽 padding 도 주지 않는다. 주면 스크롤 영역이 그 위에서 잘려 마지막
+// 항목과 모달 바닥 사이에 죽은 띠가 생긴다(TabScroll 이 padding-bottom 을 갖는다).
 const ModalBody = styled.div`
   flex: 1;
-  padding: 24px 28px;
-  overflow-y: auto;
-`
-
-const StickyAddWrap = styled.div`
-  position: sticky;
-  top: -24px;
-  background: white;
-  z-index: 2;
-  padding: 4px 0 12px 0;
-  margin-top: -4px;
+  min-height: 0;
+  padding: 24px 28px 0 28px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 `
 
 const AddButton = styled.button`
@@ -234,7 +235,7 @@ function SettingsPanel({ cardId, onClose }) {
 
   const fetchVariables = async () => {
     try {
-      const res = await fetch(`${API_URL}/cards/${cardId}/variables`)
+      const res = await apiFetch(`/cards/${cardId}/variables`)
       setVariables(await res.json())
     } catch (err) {
       console.error('Failed to fetch variables:', err)
@@ -243,7 +244,7 @@ function SettingsPanel({ cardId, onClose }) {
 
   const fetchContainers = async () => {
     try {
-      const res = await fetch(`${API_URL}/cards/${cardId}/containers`)
+      const res = await apiFetch(`/cards/${cardId}/containers`)
       setContainers(await res.json())
     } catch (err) {
       console.error('Failed to fetch containers:', err)
@@ -252,7 +253,7 @@ function SettingsPanel({ cardId, onClose }) {
 
   const fetchImages = async () => {
     try {
-      const res = await fetch(`${API_URL}/cards/${cardId}/images`)
+      const res = await apiFetch(`/cards/${cardId}/images`)
       if (res.ok) setImages(await res.json())
     } catch (err) {
       console.error('Failed to fetch images:', err)
@@ -262,11 +263,11 @@ function SettingsPanel({ cardId, onClose }) {
   const handleSaveVariable = async (formData) => {
     try {
       const url = editingVar
-        ? `${API_URL}/cards/${cardId}/variables/${editingVar.id}`
-        : `${API_URL}/cards/${cardId}/variables`
+        ? `/cards/${cardId}/variables/${editingVar.id}`
+        : `/cards/${cardId}/variables`
       const method = editingVar ? 'PUT' : 'POST'
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -288,7 +289,7 @@ function SettingsPanel({ cardId, onClose }) {
 
   const handleDeleteVariable = async (varId) => {
     try {
-      await fetch(`${API_URL}/cards/${cardId}/variables/${varId}`, { method: 'DELETE' })
+      await apiFetch(`/cards/${cardId}/variables/${varId}`, { method: 'DELETE' })
       setVariables(prev => prev.filter(v => v.id !== varId))
     } catch (err) {
       console.error('Failed to delete variable:', err)
@@ -356,7 +357,7 @@ function SettingsPanel({ cardId, onClose }) {
       variables: next.map((v, i) => ({ id: v.id, sort_order: i })),
     }
     try {
-      await fetch(`${API_URL}/cards/${cardId}/widgets/layout`, {
+      await apiFetch(`/cards/${cardId}/widgets/layout`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -407,6 +408,9 @@ function SettingsPanel({ cardId, onClose }) {
           <Tab $active={activeTab === 'variables'} onClick={() => { setActiveTab('variables'); setShowForm(false) }}>
             변수 정의
           </Tab>
+          <Tab $active={activeTab === 'tables'} onClick={() => { setActiveTab('tables'); setShowForm(false) }}>
+            표 정의
+          </Tab>
           <Tab $active={activeTab === 'images'} onClick={() => { setActiveTab('images'); setShowForm(false) }}>
             이미지 정의
           </Tab>
@@ -425,20 +429,23 @@ function SettingsPanel({ cardId, onClose }) {
           )}
 
           {activeTab === 'variables' && (
-            <>
+            <TabPane>
               {showForm ? (
-                <VariableForm
-                  initial={editingVar}
-                  containers={containers}
-                  variables={variables}
-                  onSave={handleSaveVariable}
-                  onCancel={handleCancel}
-                />
+                <TabScroll>
+                  <VariableForm
+                    initial={editingVar}
+                    containers={containers}
+                    variables={variables}
+                    onSave={handleSaveVariable}
+                    onCancel={handleCancel}
+                  />
+                </TabScroll>
               ) : (
                 <>
-                  <StickyAddWrap>
+                  <TabToolbar>
                     <AddButton onClick={handleAdd}>+ 변수 추가</AddButton>
-                  </StickyAddWrap>
+                  </TabToolbar>
+                  <TabScroll>
                   {variables.length === 0 ? (
                     <EmptyState>정의된 변수가 없습니다.</EmptyState>
                   ) : (
@@ -540,11 +547,12 @@ function SettingsPanel({ cardId, onClose }) {
                               )
                             } catch { return null }
                           })()}
-                          {v.container_id && (
-                            <Badge $bg="#e0f2f1" $color="#00695c">
-                              {getContainerName(v.container_id)}
+                          {/* 여러 컨테이너에 놓일 수 있으므로 배치마다 하나씩 */}
+                          {placedContainerIds(v).map(cid => (
+                            <Badge key={cid} $bg="#e0f2f1" $color="#00695c">
+                              {getContainerName(cid)}
                             </Badge>
-                          )}
+                          ))}
                         </VarMeta>
                           </VarBody>
                         </VariableCard>
@@ -552,10 +560,15 @@ function SettingsPanel({ cardId, onClose }) {
                     ))
                   )}
                   {dragOverIdx === variables.length && draggingVarId !== null && <DropIndicator />}
+                  </TabScroll>
                 </>
               )}
-            </>
+            </TabPane>
           )}
+
+          {/* 표 정의는 카드에 묶이지 않는다 — 여기서 만든 표를 어느 카드의
+              변수에서든 참조할 수 있다. 그래서 cardId 를 넘기지 않는다. */}
+          {activeTab === 'tables' && <TableDefinitionTab />}
 
           {activeTab === 'images' && (
             <ImageTab
@@ -566,13 +579,15 @@ function SettingsPanel({ cardId, onClose }) {
           )}
 
           {activeTab === 'layout' && (
-            <WidgetLayoutTab
-              cardId={cardId}
-              variables={variables}
-              images={images}
-              containers={containers}
-              onRefresh={() => { fetchVariables(); fetchImages() }}
-            />
+            <TabScroll>
+              <WidgetLayoutTab
+                cardId={cardId}
+                variables={variables}
+                images={images}
+                containers={containers}
+                onRefresh={() => { fetchVariables(); fetchImages() }}
+              />
+            </TabScroll>
           )}
         </ModalBody>
       </Modal>

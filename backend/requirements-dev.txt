@@ -1,0 +1,4 @@
+# ASCII only -- same reason as requirements.txt (pip decodes with the locale
+# codec, which is cp949 on a Korean Windows machine).
+-r requirements.txt
+pytest==8.3.4

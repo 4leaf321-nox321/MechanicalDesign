@@ -1,6 +1,7 @@
 import React from 'react'
 import styled from 'styled-components'
 import { expandRange } from '../../utils/doeEngine'
+import { groupByContainer } from '../../utils/placements'
 
 const Wrapper = styled.div`
   display: flex;
@@ -144,6 +145,27 @@ function parseDropdownOptions(v) {
 
 function renderFixedInput(v, spec, onChange) {
   const setValue = (val) => onChange({ mode: 'fixed', value: val })
+  if (v.var_type === 'array') {
+    // 배열은 DOE 인자가 될 수 없다(값이 여럿이라 "무엇을 바꿔 볼지" 가 없다).
+    // 모든 실험에 같은 배열이 들어간다.
+    const list = Array.isArray(spec?.value) ? spec.value : []
+    return (
+      <Row>
+        <Field>
+          값 (모든 실험 공통)
+          <NumInput
+            type="text"
+            value={list.join(', ')}
+            onChange={(e) => setValue(
+              String(e.target.value).split(/[,\s]+/).filter(s => s !== '')
+                .map(Number).filter(n => Number.isFinite(n))
+            )}
+            placeholder="예: 10, 20, 30"
+          />
+        </Field>
+      </Row>
+    )
+  }
   if (v.var_type === 'slider') {
     return (
       <Row>
@@ -271,16 +293,22 @@ function renderRangeInput(v, spec, onChange, method) {
 function DoeInputPanel({ inputVars, containers, specs, onChange, method = 'factorial' }) {
   const containerMap = {}
   containers.forEach(c => { containerMap[c.id] = c })
+  // **여기서는 변수를 한 번만 보여 준다.**
+  //
+  // 한 변수가 여러 컨테이너에 배치될 수 있는데, DOE 는 화면 배치가 아니라
+  // 실험 인자 목록이다. 배치한 만큼 인자가 늘어나면 같은 변수를 두 번 설정하게
+  // 되고 — 서로 다르게 설정하면 어느 쪽이 이기는지도 알 수 없다.
+  // 그래서 **처음 놓인 컨테이너 한 곳**에만 싣는다.
+  const grouped = groupByContainer(inputVars)
   const byContainer = {}
-  const unassigned = []
-  inputVars.forEach(v => {
-    if (v.container_id) {
-      if (!byContainer[v.container_id]) byContainer[v.container_id] = []
-      byContainer[v.container_id].push(v)
-    } else {
-      unassigned.push(v)
-    }
+  const shown = new Set()
+  containers.forEach(c => {
+    const list = (grouped[c.id] || []).filter(v => !shown.has(v.id))
+    if (list.length === 0) return
+    list.forEach(v => shown.add(v.id))
+    byContainer[c.id] = list
   })
+  const unassigned = inputVars.filter(v => !shown.has(v.id))
 
   const setSpec = (varId, next) => onChange({ ...specs, [varId]: next })
 
@@ -289,7 +317,8 @@ function DoeInputPanel({ inputVars, containers, specs, onChange, method = 'facto
       <GroupTitle>{title}</GroupTitle>
       <CardGrid>
       {vars.map(v => {
-        const spec = specs[v.id] ?? { mode: 'fixed', value: v.var_type === 'slider' ? (v.min_value ?? 0) : '' }
+        const spec = specs[v.id] ?? { mode: 'fixed', value: v.var_type === 'array' ? []
+          : v.var_type === 'slider' ? (v.min_value ?? 0) : '' }
         const mode = spec.mode || 'fixed'
         return (
           <VarCard key={v.id}>
@@ -299,7 +328,9 @@ function DoeInputPanel({ inputVars, containers, specs, onChange, method = 'facto
                 {v.symbol && <Sym>({v.symbol})</Sym>}
                 {v.unit && <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 6 }}>[{v.unit}]</span>}
               </Name>
-              <Toggle>
+              {/* 배열은 인자가 될 수 없으므로 고정/범위를 고를 것이 없다.
+                  버튼을 남겨 두면 눌러 놓고 왜 안 바뀌는지 묻게 된다. */}
+              <Toggle style={v.var_type === 'array' ? { visibility: 'hidden' } : undefined}>
                 <ToggleBtn $active={mode === 'fixed'} onClick={() => setSpec(v.id, { mode: 'fixed', value: v.var_type === 'slider' ? (v.min_value ?? 0) : (v.var_type === 'dropdown' ? parseDropdownOptions(v)[0] ?? '' : '') })}>고정</ToggleBtn>
                 <ToggleBtn $active={mode === 'range'} onClick={() => {
                   if (v.var_type === 'slider') {
@@ -312,7 +343,7 @@ function DoeInputPanel({ inputVars, containers, specs, onChange, method = 'facto
                 }}>범위</ToggleBtn>
               </Toggle>
             </Header>
-            {mode === 'fixed'
+            {v.var_type === 'array' || mode === 'fixed'
               ? renderFixedInput(v, spec, (s) => setSpec(v.id, s))
               : renderRangeInput(v, spec, (s) => setSpec(v.id, s), method)}
           </VarCard>

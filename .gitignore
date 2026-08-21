@@ -39,6 +39,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# === 배포 패키지 빌드 산출물 ===
+# scripts/ci/package_deploy.ps1 이 만든다. 릴리스 자산으로만 쓰이고
+# 저장소에는 들어가지 않는다.
+#
+# 반드시 뿌리를 고정한다(`/deploy/`). 그냥 `deploy/` 로 두면 어느 깊이의 deploy
+# 도 같이 무시되어 **scripts/deploy/ 의 배포 스크립트가 통째로 빠진다.**
+/deploy/
+/deploy_package.zip
+
 # === Uploads / runtime artifacts ===
 uploads/
 backend/uploads/

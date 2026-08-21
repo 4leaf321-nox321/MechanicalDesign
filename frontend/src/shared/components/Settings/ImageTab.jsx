@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react'
 import styled from 'styled-components'
+import { apiFetch } from '../../api/client'
+import AuthedImage from '../AuthedImage'
+import { TabPane, TabScroll, TabToolbar } from './TabLayout'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const Card = styled.div`
   background: #f8f9fa;
@@ -66,7 +68,6 @@ const IconBtn = styled.button`
 const UploadRow = styled.div`
   display: flex;
   gap: 10px;
-  margin-top: 16px;
   align-items: center;
   flex-wrap: wrap;
 `
@@ -135,7 +136,7 @@ function ImageTab({ cardId, images, onRefresh }) {
     try {
       const form = new FormData()
       form.append('file', pendingFile)
-      const res = await fetch(`${API_URL}/cards/${cardId}/images`, {
+      const res = await apiFetch(`/cards/${cardId}/images`, {
         method: 'POST',
         body: form,
       })
@@ -157,7 +158,7 @@ function ImageTab({ cardId, images, onRefresh }) {
   const handleDelete = async (id) => {
     if (!window.confirm('이 이미지를 삭제하시겠습니까?')) return
     try {
-      await fetch(`${API_URL}/cards/${cardId}/images/${id}`, { method: 'DELETE' })
+      await apiFetch(`/cards/${cardId}/images/${id}`, { method: 'DELETE' })
       onRefresh()
     } catch {
       setError('삭제 실패')
@@ -165,13 +166,32 @@ function ImageTab({ cardId, images, onRefresh }) {
   }
 
   return (
-    <>
+    <TabPane>
+      <TabToolbar>
+        <UploadRow>
+          <FileButton>
+            파일 선택
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => { setPendingFile(e.target.files?.[0] || null); setError('') }}
+            />
+          </FileButton>
+          <FileName>{pendingFile ? pendingFile.name : '선택된 파일 없음'}</FileName>
+          <AddBtn onClick={handleUpload} disabled={!pendingFile || uploading}>
+            {uploading ? '업로드 중...' : '업로드'}
+          </AddBtn>
+        </UploadRow>
+        {error && <ErrorMsg>{error}</ErrorMsg>}
+      </TabToolbar>
+      <TabScroll>
       {images.length === 0 ? (
         <EmptyState>등록된 이미지가 없습니다.</EmptyState>
       ) : (
         images.map(img => (
           <Card key={img.id}>
-            <Thumb src={`${API_URL}/cards/${cardId}/images/${img.id}/file`} alt={img.filename} />
+            <Thumb as={AuthedImage} path={`/cards/${cardId}/images/${img.id}/file`} alt={img.filename} />
             <Meta>
               <Filename title={img.filename}>{img.filename}</Filename>
             </Meta>
@@ -179,24 +199,8 @@ function ImageTab({ cardId, images, onRefresh }) {
           </Card>
         ))
       )}
-
-      <UploadRow>
-        <FileButton>
-          파일 선택
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => { setPendingFile(e.target.files?.[0] || null); setError('') }}
-          />
-        </FileButton>
-        <FileName>{pendingFile ? pendingFile.name : '선택된 파일 없음'}</FileName>
-        <AddBtn onClick={handleUpload} disabled={!pendingFile || uploading}>
-          {uploading ? '업로드 중...' : '업로드'}
-        </AddBtn>
-      </UploadRow>
-      {error && <ErrorMsg>{error}</ErrorMsg>}
-    </>
+      </TabScroll>
+    </TabPane>
   )
 }
 
