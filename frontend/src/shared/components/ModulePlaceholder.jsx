@@ -10,6 +10,7 @@ import DoeInputPanel from './DOE/DoeInputPanel'
 import DoeResultsView from './DOE/DoeResultsView'
 import { runFactorial, runLhs, combinationCount, expandRange } from '../utils/doeEngine'
 import { apiFetch } from '../api/client'
+import LoadInputsDialog from './LoadInputsDialog'
 import { useAuth } from '../auth/AuthContext'
 
 
@@ -46,6 +47,47 @@ const BannerTitle = styled.strong`
  * 계산을 한 뒤에만 뜬다. 입력을 바꾸면 다시 사라진다 — 화면에 없는 옛 숫자가
  * 기록으로 저장되는 것이 이 기능에서 가장 나쁜 실패다.
  */
+/** 계산 전 줄. 저장 바(계산 후)와 색을 달리해 둘을 헷갈리지 않게 한다. */
+const LoadBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #f8f9fb;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 16px;
+`
+
+const LoadBtn = styled.button`
+  padding: 7px 14px;
+  border: 1px solid #d5dae2;
+  border-radius: 6px;
+  background: white;
+  color: #4b5563;
+  font-size: 0.83rem;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: #3498db;
+    color: #3498db;
+  }
+`
+
+const LoadHint = styled.span`
+  font-size: 0.82rem;
+  color: #98a2b3;
+  flex: 1 1 240px;
+`
+
+const LoadMsg = styled.span`
+  font-size: 0.82rem;
+  flex: 1 1 240px;
+  color: ${p => (p.$warn ? '#a3651b' : '#2f6b3f')};
+`
+
 const SaveBar = styled.div`
   display: flex;
   align-items: center;
@@ -250,6 +292,8 @@ function ModulePlaceholder({ onGoHome }) {
   // 결과가 무효가 된 것이다 — 그때는 저장할 것이 없다.
   const [lastResults, setLastResults] = useState(null)
   const [recordTitle, setRecordTitle] = useState('')
+  const [showLoadInputs, setShowLoadInputs] = useState(false)
+  const [loadMsg, setLoadMsg] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState(null)
 
@@ -266,14 +310,14 @@ function ModulePlaceholder({ onGoHome }) {
   useEffect(() => {
     const fetchCard = async () => {
       try {
-        const res = await apiFetch(`/cards`)
+        // **목록에서 고르지 않는다.** 전에는 `/cards` 를 통째로 받아 route 가
+        // 같은 것을 찾았는데, 목록이 게시된 카드만 담게 되자 초안이 하나도
+        // 열리지 않았다. 열 수 있는 카드와 목록에 보일 카드는 다른 질문이다.
+        const currentPath = decodeURIComponent(location.pathname)
+        const res = await apiFetch(`/cards/lookup?route=${encodeURIComponent(currentPath)}`)
         if (!res.ok) return
         const text = await res.text()
-        if (!text) return
-        const cards = JSON.parse(text)
-        const currentPath = decodeURIComponent(location.pathname)
-        const found = cards.find(c => c.route === currentPath)
-        if (found) setCard(found)
+        if (text) setCard(JSON.parse(text))
       } catch (err) {
         console.error('Failed to fetch card:', err)
       }
@@ -368,6 +412,31 @@ function ModulePlaceholder({ onGoHome }) {
     setSaveMsg(null)
   }, [])
 
+  /**
+   * 고른 기록의 입력값을 화면에 채운다.
+   *
+   * **결과는 지운다.** 입력이 바뀌었는데 옛 결과가 남아 있으면, 그 숫자가
+   * 방금 채운 입력으로 나온 것처럼 보인다 — 그 상태로 기록을 저장하면
+   * 입력과 결과가 어긋난 기록이 남는다.
+   *
+   * 못 맞춘 입력이 있으면 개수를 말해 준다. 조용히 빠뜨리면 사람은 빈칸을
+   * 못 본 채로 계산한다.
+   */
+  const handleLoadInputs = ({ values, matched, missing }, record) => {
+    setInputValues(values)
+    setLastResults(null)
+    setShowLoadInputs(false)
+    setLoadMsg(
+      missing.length
+        ? {
+            warn: true,
+            text: `'${record.title}' 의 입력 ${matched}개를 채웠습니다. `
+              + `${missing.length}개는 지금 카드에 없어 빠졌습니다: ${missing.join(', ')}`,
+          }
+        : { text: `'${record.title}' 의 입력 ${matched}개를 채웠습니다. 계산 버튼을 눌러 주세요.` },
+    )
+  }
+
   const handleSaveRecord = async () => {
     if (!card || !lastResults) return
     setSaving(true)
@@ -410,6 +479,28 @@ function ModulePlaceholder({ onGoHome }) {
         onLayoutChange={handleLayoutChange}
         onCalculated={handleCalculated}
       />
+
+      {/* 계산 **전에** 보여야 하는 줄이다. 저장 바는 계산 뒤에만 뜨는데,
+          불러오기는 계산하기 전에 쓰는 것이라 같은 자리에 둘 수 없다. */}
+      {!editMode && (
+        <LoadBar>
+          <LoadBtn onClick={() => { setLoadMsg(null); setShowLoadInputs(true) }}>
+            이전 입력 불러오기
+          </LoadBtn>
+          {loadMsg
+            ? <LoadMsg $warn={loadMsg.warn}>{loadMsg.text}</LoadMsg>
+            : <LoadHint>같은 조건으로 다시 계산할 때, 저장해 둔 기록의 입력값을 그대로 가져옵니다.</LoadHint>}
+        </LoadBar>
+      )}
+
+      {showLoadInputs && card && (
+        <LoadInputsDialog
+          card={card}
+          variables={variables}
+          onLoad={handleLoadInputs}
+          onClose={() => setShowLoadInputs(false)}
+        />
+      )}
 
       {lastResults && !editMode && (
         <SaveBar>

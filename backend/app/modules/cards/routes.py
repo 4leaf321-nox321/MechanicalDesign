@@ -332,6 +332,34 @@ def get_cards():
     return jsonify([c.to_dict() for c in cards])
 
 
+@cards_bp.route('/lookup', methods=['GET'])
+def lookup_card():
+    """주소로 카드 하나를 찾는다. `?route=/볼트-강도`
+
+    **목록으로 카드를 찾게 두면 안 된다.** 카드 화면은 지금까지 `/cards` 를
+    통째로 받아 route 가 같은 것을 골랐는데, 그러면 그 목록에 없는 카드는 열
+    수가 없다 — 전체 목록이 게시된 것만 담게 된 순간 **모든 초안이 열리지
+    않았다.** 화면이 열 수 있는 카드와 목록에 보일 카드는 다른 질문이다.
+
+    보이면 안 되는 카드는 **없는 것과 같이** 답한다. 있다는 사실만 알려 줘도
+    이름과 존재가 새어 나간다.
+    """
+    route = (request.args.get('route') or '').strip()
+    if not route:
+        raise AppError('MD-CARDS-0140', 'route 를 지정해 주세요.')
+
+    card = Card.query.filter_by(route=route).first()
+    if card is None or not card.is_visible_to(current_user()):
+        raise AppError('MD-CARDS-0141', '카드를 찾을 수 없습니다.', status=404)
+    return jsonify(card.to_dict())
+
+
+@cards_bp.route('/<int:card_id>', methods=['GET'])
+def get_card(card_id):
+    """카드 하나. 초안·휴지통 판정은 `guard_draft_visibility` 가 이미 걸러 준다."""
+    return jsonify(Card.query.get_or_404(card_id).to_dict())
+
+
 @cards_bp.route('', methods=['POST'])
 def create_card():
     data = request.get_json()

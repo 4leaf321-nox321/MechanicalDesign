@@ -363,3 +363,40 @@ def test_a_token_cannot_unpublish(app, client):
     r = client.post(f"/api/cards/{card['id']}/unpublish",
                     headers=_machine(app, user_id), json={})
     assert r.status_code == 403
+
+def test_a_draft_page_can_still_be_opened_by_its_owner(app, client):
+    """카드 화면은 **주소로** 카드를 찾는다.
+
+    전에는 `/cards` 목록을 훑어 route 가 같은 것을 골랐다. 목록이 게시된 카드만
+    담게 된 순간 **모든 초안 화면이 열리지 않았다** — 목록에 보일 카드와 열 수
+    있는 카드는 다른 질문이다.
+    """
+    owner_id = _user(app, 'owner@example.com')
+    made = client.post('/api/cards', headers=_machine(app, owner_id),
+                       json={'name': '내 초안'}).get_json()
+    head = _human(client, 'owner@example.com')
+
+    assert client.get('/api/cards', headers=head).get_json() == []
+
+    r = client.get('/api/cards/lookup', query_string={'route': made['route']},
+                   headers=head)
+    assert r.status_code == 200
+    assert r.get_json()['name'] == '내 초안'
+
+
+def test_lookup_hides_someone_elses_draft(app, client):
+    """있다는 사실만 알려 줘도 이름과 존재가 새어 나간다."""
+    owner_id = _user(app, 'owner@example.com')
+    _user(app, 'other@example.com')
+    made = client.post('/api/cards', headers=_machine(app, owner_id),
+                       json={'name': '남의 초안'}).get_json()
+
+    r = client.get('/api/cards/lookup', query_string={'route': made['route']},
+                   headers=_human(client, 'other@example.com'))
+    assert r.status_code == 404
+
+
+def test_lookup_needs_a_route(app, client):
+    _user(app, 'owner@example.com')
+    r = client.get('/api/cards/lookup', headers=_human(client, 'owner@example.com'))
+    assert r.status_code == 400
