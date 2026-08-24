@@ -297,11 +297,6 @@ def get_cards():
     actor = current_user()
     # 지운 카드는 어떤 조회에도 섞이지 않는다. 휴지통은 따로 있다(/cards/trash).
     query = Card.query.filter(Card.deleted_at.is_(None))
-    if not actor.is_admin:
-        # 남의 초안은 목록에 아예 넣지 않는다. 화면에서 거르면 응답에는
-        # 이미 실려 나간 뒤라, 개발자도구만 열면 그대로 보인다.
-        query = query.filter(db.or_(Card.status != 'draft',
-                                    Card.created_by_id == actor.id))
 
     org_slug = (request.args.get('org') or '').strip()
     if org_slug:
@@ -316,11 +311,22 @@ def get_cards():
             if org.owner_user_id != actor.id and not actor.is_admin:
                 raise AppError('MD-ORG-0109', '다른 사람의 개인 공간은 볼 수 없습니다.',
                                status=403)
+            # 개인 공간에서만 초안이 보인다. 내 서랍이므로 당연하다.
             query = query.filter(Card.home_org_slug == org_slug)
         else:
             slugs = org_services.descendant_slugs(org_slug)
             query = (query.join(CardMount, CardMount.card_id == Card.id)
                           .filter(CardMount.org_slug.in_(slugs)).distinct())
+    else:
+        # **전체는 게시된 것만이다.**
+        #
+        # 전에는 내 초안도 섞였다. 그때는 초안이 드물었지만, 카드 복제가 생긴
+        # 뒤로는 복제할 때마다 사본이 원본 **바로 옆에** 앉는다 — 배지가 붙어
+        # 있어도 자리만 보면 같이 게시된 것처럼 읽힌다.
+        #
+        # 초안은 「내 카드」에 있으면 충분하고, 그래야 전체가 "남들도 보는 것"
+        # 이라는 뜻을 갖는다. 남의 초안을 걸러 내던 조건도 여기에 흡수된다.
+        query = query.filter(Card.status != 'draft')
 
     cards = query.order_by(Card.sort_order, Card.created_at).all()
     return jsonify([c.to_dict() for c in cards])

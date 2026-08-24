@@ -810,10 +810,14 @@ function MainPage() {
     }
     const body = await res.json()
     await fetchTree()
-    if (personal) setSelected(personal.slug)
-    else fetchCards(selected)
+    // **자리를 옮기든 아니든 목록은 다시 받는다.** 같은 값으로 setSelected 하면
+    // 상태가 안 바뀌어 useEffect 가 돌지 않는다 — 이미 「내 카드」를 보던 중이면
+    // 방금 만든 사본이 새로고침 전까지 안 나온다.
+    const target = personal ? personal.slug : selected
+    setSelected(target)
+    fetchCards(target)
     setOrgError('')
-    setNotice(`${body.message} 내 카드에서 확인하세요.`)
+    setNotice(`${body.message} 「내 카드」에 초안으로 놓였습니다.`)
   }
 
   const handleRestoreCard = async (e, card) => {

@@ -116,20 +116,33 @@ def test_someone_elses_draft_is_not_in_the_list(app, client):
     assert listed == []
 
 
-def test_i_see_my_own_draft(app, client):
+def test_i_see_my_own_draft_in_my_space(app, client):
+    """초안은 **개인 공간에서** 보인다.
+
+    전체 목록에는 게시된 것만 나온다. 전에는 내 초안도 섞였는데, 카드 복제가
+    생긴 뒤로는 복제할 때마다 사본이 원본 바로 옆에 앉아 같이 게시된 것처럼
+    읽혔다. 초안은 내 서랍에 있으면 충분하다.
+    """
     owner_id = _user(app, 'owner@example.com')
     client.post('/api/cards', headers=_machine(app, owner_id), json={'name': '내 초안'})
+    head = _human(client, 'owner@example.com')
 
-    listed = client.get('/api/cards', headers=_human(client, 'owner@example.com')).get_json()
-    assert [c['name'] for c in listed] == ['내 초안']
+    assert client.get('/api/cards', headers=head).get_json() == []
+
+    mine = client.get(f'/api/cards?org=personal-{owner_id}', headers=head).get_json()
+    assert [c['name'] for c in mine] == ['내 초안']
 
 
 def test_admin_sees_every_draft(app, client):
+    """관리자는 남의 서랍도 열 수 있다 — 초안 검토가 관리자의 일이다."""
     owner_id = _user(app, 'owner@example.com')
     _user(app, 'boss@example.com', admin=True)
     client.post('/api/cards', headers=_machine(app, owner_id), json={'name': '남의 초안'})
 
-    listed = client.get('/api/cards', headers=_human(client, 'boss@example.com')).get_json()
+    head = _human(client, 'boss@example.com')
+    assert client.get('/api/cards', headers=head).get_json() == []
+
+    listed = client.get(f'/api/cards?org=personal-{owner_id}', headers=head).get_json()
     assert [c['name'] for c in listed] == ['남의 초안']
 
 
