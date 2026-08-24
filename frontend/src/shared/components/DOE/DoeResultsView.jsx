@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react'
+import DoeFilterBar from './DoeFilterBar'
+import { applyConditions, rangeOf } from '../../utils/doeFilter'
 import styled from 'styled-components'
 import Scatter3DPlot from './Scatter3DPlot'
 import SplomPlot from './SplomPlot'
@@ -217,6 +219,7 @@ function DoeResultsView({ result, variables }) {
   const [sortKey, setSortKey] = useState(null)
   const [sortDir, setSortDir] = useState('asc')
   const [pageIdx, setPageIdx] = useState(0)
+  const [conditions, setConditions] = useState([])
 
   const allKeys = useMemo(() => {
     if (!result) return []
@@ -232,18 +235,51 @@ function DoeResultsView({ result, variables }) {
     return m
   }, [variables])
 
+  /**
+   * 조건을 만족하는 행. **여기서 한 번 거르고 아래는 전부 이것을 쓴다.**
+   *
+   * 표만 거르면 그래프는 전체를 그리고 있는데 사람은 걸러진 것으로 읽어,
+   * 조건 밖의 점을 보고 판단하게 된다.
+   */
+  const filtered = useMemo(
+    () => applyConditions(result?.rows, conditions),
+    [result, conditions],
+  )
+
+  // useMemo 의 콜백은 렌더 중에 **즉시** 돈다. 아래에 두면 조건이 하나도
+  // 안 걸린 순간(=이 안내가 필요한 바로 그때) 아직 정의되지 않은 이름을
+  // 불러 화면이 죽는다.
+  const labelOf = (key) => labels[key] || key
+  const trim = (n) => (Number.isFinite(n)
+    ? String(Math.round(n * 1e6) / 1e6)
+    : '-')
+
+  /** 하나도 안 걸렸을 때 **왜 그런지**. 조건을 늦출지 범위를 넓힐지 갈린다. */
+  const missHint = useMemo(() => {
+    if (!result || filtered.matched > 0) return ''
+    const parts = conditions
+      .filter(c => c.key)
+      .map(c => {
+        const r = rangeOf(result.rows, c.key)
+        return r ? `${labelOf(c.key)}: 이 조합들에서 ${trim(r.min)} ~ ${trim(r.max)}` : null
+      })
+      .filter(Boolean)
+    return parts.length ? `실제로 나온 범위 — ${parts.join(' / ')}` : ''
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, conditions, filtered.matched])
+
   const sortedRows = useMemo(() => {
     if (!result) return []
-    if (!sortKey) return result.rows
+    if (!sortKey) return filtered.rows
     const dir = sortDir === 'asc' ? 1 : -1
-    return [...result.rows].sort((a, b) => {
+    return [...filtered.rows].sort((a, b) => {
       const av = a[sortKey]; const bv = b[sortKey]
       if (av === null || av === undefined) return 1
       if (bv === null || bv === undefined) return -1
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
       return String(av).localeCompare(String(bv)) * dir
     })
-  }, [result, sortKey, sortDir])
+  }, [result, filtered, sortKey, sortDir])
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -251,7 +287,9 @@ function DoeResultsView({ result, variables }) {
   }
 
   const handleExportCsv = () => {
-    const csv = toCsv(allKeys, result.rows)
+    // 화면에서 거른 것과 다른 것이 내려가면, 받은 사람은 조건 밖의 조합을
+    // 조건 만족으로 읽는다.
+    const csv = toCsv(allKeys, filtered.rows)
     const BOM = '﻿'
     const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -288,10 +326,10 @@ function DoeResultsView({ result, variables }) {
 
   const renderViz = (id) => {
     switch (id) {
-      case '3d':       return <Scatter3DPlot rows={result.rows} keys={allKeys} labels={labels} />
-      case 'splom':    return <SplomPlot rows={result.rows} keys={allKeys} labels={labels} />
-      case 'parallel': return <ParallelCoordsPlot rows={result.rows} keys={allKeys} labels={labels} />
-      case 'heatmap':  return <CorrelationHeatmap rows={result.rows} keys={allKeys} labels={labels} />
+      case '3d':       return <Scatter3DPlot rows={filtered.rows} keys={allKeys} labels={labels} />
+      case 'splom':    return <SplomPlot rows={filtered.rows} keys={allKeys} labels={labels} />
+      case 'parallel': return <ParallelCoordsPlot rows={filtered.rows} keys={allKeys} labels={labels} />
+      case 'heatmap':  return <CorrelationHeatmap rows={filtered.rows} keys={allKeys} labels={labels} />
       default: return null
     }
   }
@@ -302,9 +340,18 @@ function DoeResultsView({ result, variables }) {
 
   return (
     <Wrapper>
+      <DoeFilterBar
+        keys={allKeys}
+        labels={labels}
+        conditions={conditions}
+        onChange={setConditions}
+        summary={filtered}
+        hint={missHint}
+      />
+
       <Toolbar>
         <Info>
-          <strong>{result.rows.length}</strong>개 조합 ·
+          <strong>{filtered.matched}</strong>개 조합{filtered.matched !== filtered.total ? ` (전체 ${filtered.total})` : ''} ·
           입력 {result.inputKeys.length}개 · 결과 {result.outputKeys.length}개
           {result.intermediateKeys.length > 0 && ` · 중간값 ${result.intermediateKeys.length}개`}
         </Info>
