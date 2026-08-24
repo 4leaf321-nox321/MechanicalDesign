@@ -150,3 +150,20 @@ describe('무엇이 고정되는지', () => {
     expect(got.message).toContain('하중 (F)')
   })
 })
+
+describe('민감도가 쓰는 경우 — 푸는 변수가 없다', () => {
+  const vars = [
+    { id: 1, category: 'input', var_type: 'text', symbol: 'F', name: '하중' },
+    { id: 2, category: 'input', var_type: 'slider', symbol: 'k', name: '계수',
+      min_value: 2, max_value: 10 },
+    { id: 3, category: 'output', var_type: 'formula', symbol: 'y', name: 'y',
+      formula: 'F * k' },
+  ]
+
+  it('solvedId 가 null 이면 입력 전부가 나온다', () => {
+    // 민감도는 모든 입력을 차례로 흔드니 '고정에서 빠지는 하나' 가 없다.
+    const got = fixedInputs(vars, { 1: 600 }, null)
+    expect(got.map(f => f.variable.symbol)).toEqual(['F', 'k'])
+    expect(got.find(f => f.variable.symbol === 'k').usedDefault).toBe(true)
+  })
+})

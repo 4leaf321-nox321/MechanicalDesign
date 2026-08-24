@@ -12,7 +12,7 @@
 import React, { useMemo, useState } from 'react'
 import styled from 'styled-components'
 import { DEFAULT_PERCENT, sensitivity } from '../utils/sensitivity'
-import { fmt } from '../utils/goalSeek'
+import { fixedInputs, fmt } from '../utils/goalSeek'
 
 const Wrap = styled.div`
   background: white;
@@ -61,6 +61,36 @@ const Num = styled.input`
   border-radius: 6px;
   font-size: 0.88rem;
   font-weight: 400;
+`
+
+const Held = styled.div`
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: #f8f9fb;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+`
+
+const HeldLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  margin-bottom: 8px;
+`
+
+const HeldList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+`
+
+const HeldItem = styled.span`
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: ${p => (p.$blank ? '#fdecea' : '#eef2f7')};
+  color: ${p => (p.$blank ? '#a4343a' : '#4b5563')};
+  border: 1px solid ${p => (p.$blank ? '#f5c6cb' : '#dfe3ea')};
 `
 
 const Msg = styled.div`
@@ -150,6 +180,14 @@ function SensitivityPanel({ variables, values }) {
   const [outputId, setOutputId] = useState(() => targets[0]?.id ?? '')
   const [percent, setPercent] = useState(DEFAULT_PERCENT)
 
+  // **어느 설계점을 보고 있는지 보여 준다.** 흔드는 변수 말고는 전부 이 값으로
+  // 고정되므로, 이 값이 무엇인지 모르면 결과가 어느 설계에 대한 것인지 알 수
+  // 없다. 비어 있어 기본값으로 떨어진 칸은 특히 안 보인다.
+  //
+  // solvedId 를 비워 넘긴다 — 민감도는 **모든** 입력을 차례로 흔들므로
+  // '고정에서 빠지는 하나' 가 없다.
+  const held = useMemo(() => fixedInputs(variables, values, null), [variables, values])
+
   const chosen = targets.find(v => String(v.id) === String(outputId))
   const result = useMemo(
     () => (chosen ? sensitivity(variables, values, chosen.id, percent) : null),
@@ -192,6 +230,25 @@ function SensitivityPanel({ variables, values }) {
           <Num value={percent} onChange={(e) => setPercent(e.target.value)} />
         </Field>
       </Form>
+
+      {held.length > 0 && (
+        <Held>
+          <HeldLabel>이 설계점을 기준으로 흔듭니다 (단일 계산 탭의 값)</HeldLabel>
+          <HeldList>
+            {held.map(f => (
+              <HeldItem key={f.variable.id} $blank={f.isBlank}>
+                {f.variable.symbol || f.variable.name}
+                {' = '}
+                {f.isBlank
+                  ? '(비어 있음)'
+                  : Array.isArray(f.value) ? `[${f.value.length}개]` : String(f.value)}
+                {f.variable.unit && !f.isBlank ? ` ${f.variable.unit}` : ''}
+                {f.usedDefault && !f.isBlank ? ' (기본값)' : ''}
+              </HeldItem>
+            ))}
+          </HeldList>
+        </Held>
+      )}
 
       {result && !result.ok && <Msg $bad>{result.message}</Msg>}
 
