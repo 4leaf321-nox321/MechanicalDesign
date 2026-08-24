@@ -33,7 +33,7 @@ export function placedContainerIds(widget) {
 export function groupByContainer(widgets) {
   const map = {}
   ;(widgets || []).forEach(widget => {
-    ;(widget.placements || []).forEach(p => {
+    (widget.placements || []).forEach(p => {
       if (!map[p.container_id]) map[p.container_id] = []
       map[p.container_id].push({ widget, sort_order: p.sort_order ?? 0 })
     })

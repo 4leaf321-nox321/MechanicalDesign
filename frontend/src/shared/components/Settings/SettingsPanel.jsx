@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import styled from 'styled-components'
 import VariableForm from './VariableForm'
 import ContainerTab from './ContainerTab'
@@ -6,6 +6,7 @@ import ImageTab from './ImageTab'
 import WidgetLayoutTab from './WidgetLayoutTab'
 import { apiFetch } from '../../api/client'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
+import { useDragAutoScroll } from '../../utils/useDragAutoScroll'
 import { placedContainerIds } from '../../utils/placements'
 import TableDefinitionTab from './TableDefinitionTab'
 
@@ -113,17 +114,43 @@ const AddButton = styled.button`
   &:hover { border-color: #3498db; color: #3498db; background: #f8fbff; }
 `
 
+/**
+ * 목록을 여러 열로 편다.
+ *
+ * 한 열이면 카드가 모달 너비만큼 늘어나 **이름 한 줄에 빈 공간이 한 뼘**
+ * 남는다. 정작 세로로는 길어져서, 변수가 스무 개면 아래쪽은 스크롤해야만
+ * 보인다. 자동 채움으로 두면 모달이 좁을 때는 한 열, 넓을 때는 두세 열이
+ * 되어 어느 쪽으로도 낭비가 없다.
+ *
+ * `minmax(N, 1fr)` 의 N 은 **카드가 읽히는 최소 너비**다. 이보다 좁아지면
+ * 이름이 잘리고 배지가 줄바꿈돼 오히려 알아보기 어렵다.
+ */
+const VarGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
+`
+
 const VariableCard = styled.div`
   background: #f8f9fa;
   border: 1px solid ${p => p.$dragging ? '#3498db' : '#e9ecef'};
   border-radius: 8px;
   padding: 16px;
-  margin-bottom: 12px;
   opacity: ${p => p.$dragging ? 0.4 : 1};
   display: flex;
   gap: 10px;
   align-items: stretch;
   transition: border-color 0.15s, box-shadow 0.15s;
+  ${p => p.$dropBefore && dropEdge(p.$multiColumn ? 'left' : 'top')}
+`
+
+/** 맨 뒤에 놓을 때. 마지막 카드 뒤에는 칠할 카드가 없어 빈 칸 하나를 세운다. */
+const DropTail = styled.div`
+  border: 2px dashed #3498db;
+  border-radius: 8px;
+  min-height: 56px;
+  opacity: 0.7;
 `
 
 const DragHandle = styled.div`
@@ -147,11 +174,19 @@ const VarBody = styled.div`
   min-width: 0;
 `
 
-const DropIndicator = styled.div`
-  height: 2px;
-  background: #3498db;
-  border-radius: 1px;
-  margin: -6px 4px 6px;
+/**
+ * 끼워 넣을 자리 표시.
+ *
+ * 전에는 카드 사이에 **가로선 한 줄을 끼워 넣었다.** 한 열일 때는 맞았지만
+ * 격자에서는 그 선이 **자기 칸을 하나 차지해** 뒤 카드가 통째로 밀린다 —
+ * 드래그하는 동안 목록이 출렁이고, 정작 어디에 놓이는지는 더 알기 어렵다.
+ *
+ * 그래서 선을 넣지 않고 대상 카드의 **모서리를 칠한다.** 열이 여럿이면
+ * 왼쪽(그 앞에 들어간다), 한 열이면 위쪽이다. 자리를 차지하지 않으므로
+ * 아무것도 밀리지 않는다.
+ */
+const dropEdge = (side) => `
+  box-shadow: inset ${side === 'left' ? '3px 0 0 0' : '0 3px 0 0'} #3498db;
 `
 
 const VarHeader = styled.div`
@@ -226,6 +261,14 @@ function SettingsPanel({ cardId, onClose }) {
   const [editingVar, setEditingVar] = useState(null)
   const [draggingVarId, setDraggingVarId] = useState(null)
   const [dragOverIdx, setDragOverIdx] = useState(null)
+
+  // 드래그 중에는 휠이 먹지 않는다. 가장자리에 대면 목록이 따라 움직이게 한다.
+  const varScrollRef = useRef(null)
+  const varGridRef = useRef(null)
+  // 표시 방향(왼쪽/위)을 정하는 데 쓴다. 드래그를 시작할 때 한 번 재고 그대로
+  // 쓴다 — 매 프레임 getComputedStyle 을 부르면 드래그가 눈에 띄게 무거워진다.
+  const [multiColumn, setMultiColumn] = useState(false)
+  useDragAutoScroll(varScrollRef, draggingVarId !== null)
 
   useEffect(() => {
     fetchContainers()
@@ -369,18 +412,35 @@ function SettingsPanel({ cardId, onClose }) {
   }
 
   const handleVarDragStart = (e, varId) => {
+    setMultiColumn(varColumnCount() > 1)
     setDraggingVarId(varId)
     e.dataTransfer.effectAllowed = 'move'
     try { e.dataTransfer.setData('text/plain', String(varId)) } catch {}
   }
 
+  /**
+   * 어느 자리에 끼울지 정한다.
+   *
+   * **열이 여럿이면 좌우로 판단한다.** 한 열일 때는 카드 위/아래가 곧
+   * 앞/뒤지만, 두 열이 되면 같은 줄의 오른쪽 카드가 '다음' 이다. 그때도
+   * 위아래로 재면 옆 칸으로 옮기려는 동작이 전부 같은 자리로 읽힌다.
+   */
   const handleVarDragOver = (e, idx) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     const rect = e.currentTarget.getBoundingClientRect()
-    const midY = rect.top + rect.height / 2
-    const insertIdx = e.clientY < midY ? idx : idx + 1
-    setDragOverIdx(insertIdx)
+    const before = multiColumn
+      ? e.clientX < rect.left + rect.width / 2
+      : e.clientY < rect.top + rect.height / 2
+    setDragOverIdx(before ? idx : idx + 1)
+  }
+
+  /** 지금 몇 열로 그려져 있나. 화면 너비에 따라 바뀌므로 그때그때 읽는다. */
+  const varColumnCount = () => {
+    const el = varGridRef.current
+    if (!el) return 1
+    const cols = window.getComputedStyle(el).gridTemplateColumns
+    return cols ? cols.split(' ').filter(Boolean).length : 1
   }
 
   const handleVarDragEnd = () => {
@@ -502,15 +562,17 @@ function SettingsPanel({ cardId, onClose }) {
                   <TabToolbar>
                     <AddButton onClick={handleAdd}>+ 변수 추가</AddButton>
                   </TabToolbar>
-                  <TabScroll>
+                  <TabScroll ref={varScrollRef}>
                   {variables.length === 0 ? (
                     <EmptyState>정의된 변수가 없습니다.</EmptyState>
                   ) : (
-                    variables.map((v, idx) => (
+                    <VarGrid ref={varGridRef}>
+                    {variables.map((v, idx) => (
                       <React.Fragment key={v.id}>
-                        {dragOverIdx === idx && draggingVarId !== null && <DropIndicator />}
                         <VariableCard
                           $dragging={draggingVarId === v.id}
+                          $dropBefore={dragOverIdx === idx && draggingVarId !== null}
+                          $multiColumn={multiColumn}
                           onDragOver={(e) => handleVarDragOver(e, idx)}
                           onDrop={handleVarDrop}
                         >
@@ -615,9 +677,10 @@ function SettingsPanel({ cardId, onClose }) {
                           </VarBody>
                         </VariableCard>
                       </React.Fragment>
-                    ))
+                    ))}
+                    {dragOverIdx === variables.length && draggingVarId !== null && <DropTail />}
+                    </VarGrid>
                   )}
-                  {dragOverIdx === variables.length && draggingVarId !== null && <DropIndicator />}
                   </TabScroll>
                 </>
               )}

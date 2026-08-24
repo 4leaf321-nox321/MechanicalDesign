@@ -5,12 +5,25 @@ import AuthedImage from '../AuthedImage'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
 
 
+/**
+ * 이미지 목록을 여러 열로 편다.
+ *
+ * 썸네일 한 장과 파일명만 있는 줄이 모달 너비만큼 늘어나면 오른쪽이 통째로
+ * 비고, 장수가 늘수록 세로로만 길어진다. 카드가 좁아도 읽을 것이 적어서
+ * 최소 너비를 변수·표보다 작게 잡는다.
+ */
+const ImgGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  align-items: start;
+`
+
 const Card = styled.div`
   background: #f8f9fa;
   border: 1px solid #e9ecef;
   border-radius: 8px;
   padding: 14px 16px;
-  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -189,7 +202,8 @@ function ImageTab({ cardId, images, onRefresh }) {
       {images.length === 0 ? (
         <EmptyState>등록된 이미지가 없습니다.</EmptyState>
       ) : (
-        images.map(img => (
+        <ImgGrid>
+        {images.map(img => (
           <Card key={img.id}>
             <Thumb as={AuthedImage} path={`/cards/${cardId}/images/${img.id}/file`} alt={img.filename} />
             <Meta>
@@ -197,7 +211,8 @@ function ImageTab({ cardId, images, onRefresh }) {
             </Meta>
             <IconBtn onClick={() => handleDelete(img.id)}>삭제</IconBtn>
           </Card>
-        ))
+        ))}
+        </ImgGrid>
       )}
       </TabScroll>
     </TabPane>

@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .js,.jsx --max-warnings 20"
   },
   "dependencies": {
     "plotly.js-dist-min": "^2.35.2",
@@ -20,6 +21,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.3",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "vite": "^4.4.5",
     "vitest": "^0.34.6"
   }

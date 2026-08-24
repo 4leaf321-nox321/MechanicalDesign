@@ -46,12 +46,33 @@ const AddBtn = styled.button`
   &:hover { background: #2980b9; }
 `
 
+/**
+ * 목록을 여러 열로 편다.
+ *
+ * 한 열이면 카드가 모달 너비만큼 늘어나 **이름 한 줄에 빈 공간이 한 뼘**
+ * 남는다. 정작 세로로는 길어져서, 변수가 스무 개면 아래쪽은 스크롤해야만
+ * 보인다. 자동 채움으로 두면 모달이 좁을 때는 한 열, 넓을 때는 두세 열이
+ * 되어 어느 쪽으로도 낭비가 없다.
+ *
+ * `minmax(N, 1fr)` 의 N 은 **카드가 읽히는 최소 너비**다. 이보다 좁아지면
+ * 이름이 잘리고 배지가 줄바꿈돼 오히려 알아보기 어렵다.
+ */
+const TableGridWrap = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+  align-items: start;
+`
+
 const Card = styled.div`
   background: #f8f9fa;
   border: 1px solid ${p => (p.$open ? '#3498db' : '#e9ecef')};
   border-radius: 8px;
-  margin-bottom: 10px;
   overflow: hidden;
+
+  /* 펼친 표는 **줄 전체**를 쓴다. 한 칸 너비에 가두면 열이 몇 개만 돼도
+     격자가 가로로 밀려, 편집하려고 연 사람이 스크롤부터 하게 된다. */
+  ${p => p.$open && 'grid-column: 1 / -1;'}
 `
 
 const CardHead = styled.div`
@@ -382,7 +403,8 @@ function TableDefinitionTab() {
             ) : '검색 결과가 없습니다.'}
           </Empty>
         ) : (
-          filtered.map(tpl => {
+          <TableGridWrap>
+          {filtered.map(tpl => {
             const users = usage[tpl.id] || []
             const isOpen = openId === tpl.id
             return (
@@ -430,7 +452,8 @@ function TableDefinitionTab() {
                 )}
               </Card>
             )
-          })
+          })}
+          </TableGridWrap>
         )}
       </TabScroll>
     </TabPane>
