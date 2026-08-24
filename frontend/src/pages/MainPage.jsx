@@ -100,6 +100,28 @@ const Crumb = styled.div`
   }
 `
 
+const OrgErrorBar = styled.div`
+  margin: 14px 48px 0;
+  padding: 10px 14px;
+  background: #fdf3f2;
+  border: 1px solid #f5d9d6;
+  border-radius: 6px;
+  color: #a33a2c;
+  font-size: 0.84rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`
+
+const CloseX = styled.button`
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #a33a2c;
+  cursor: pointer;
+  font-size: 0.8rem;
+`
+
 const EmptyNote = styled.div`
   padding: 48px;
   color: #98a2b3;
@@ -504,54 +526,88 @@ function MainPage() {
   }
 
   // --- 조직 관리 (관리자) -------------------------------------------------------
+  //
+  // 모달이 결과를 **문자열로 돌려받는다.** 빈 값이면 성공, 글자가 있으면 그것이
+  // 오류 문구다. 모달이 서버 응답을 직접 읽게 하면 API 경로가 두 곳으로 갈리고,
+  // 실패했을 때 창을 닫을지 남길지 판단도 두 곳에 생긴다.
 
-  const handleAddOrg = async (parentSlug) => {
-    const name = window.prompt(
-      parentSlug ? '하위 조직 이름' : '조직 이름 (최상위)',
-    )
-    if (!name || !name.trim()) return
-    const res = await apiFetch('/orgs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), parent_slug: parentSlug }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      window.alert(body.error || '조직을 만들지 못했습니다.')
-      return
-    }
-    fetchTree()
+  const [orgForm, setOrgForm] = useState(null)      // {mode, parentSlug, parentName, org}
+  const [orgDelete, setOrgDelete] = useState(null)  // {org, childCount}
+  const [orgError, setOrgError] = useState('')
+
+  const errorFrom = async (res) => {
+    if (res.ok) return ''
+    const body = await res.json().catch(() => ({}))
+    return body.error || '처리하지 못했습니다.'
   }
 
-  const handleRenameOrg = async (org) => {
-    const name = window.prompt('조직 이름', org.name)
-    if (!name || !name.trim() || name.trim() === org.name) return
-    // 이름만 바꾼다. 주소(slug)는 그대로 둔다 — 바꾸면 저장해 둔 링크가 죽는다.
-    const res = await apiFetch(`/orgs/${encodeURIComponent(org.slug)}`, {
+  /** 트리에서 노드를 찾는다 — 하위 개수는 삭제 모달이 미리 알려 주는 데 쓴다. */
+  const findNode = (nodes, slug) => {
+    for (const n of nodes) {
+      if (n.slug === slug) return n
+      const hit = findNode(n.children || [], slug)
+      if (hit) return hit
+    }
+    return null
+  }
+
+  const openAddOrg = (parentSlug) => {
+    const parent = parentSlug ? findNode(tree, parentSlug) : null
+    setOrgForm({ mode: 'create', parentSlug, parentName: parent?.name })
+  }
+
+  const openRenameOrg = (org) => setOrgForm({ mode: 'rename', org })
+
+  const openDeleteOrg = (org) => {
+    const node = findNode(tree, org.slug)
+    setOrgDelete({ org: node || org, childCount: (node?.children || []).length })
+  }
+
+  const submitOrgForm = async (name) => {
+    const creating = orgForm.mode === 'create'
+    const res = creating
+      ? await apiFetch('/orgs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, parent_slug: orgForm.parentSlug || null }),
+        })
+      : // 이름만 바꾼다. 주소(slug)는 그대로 둔다 — 바꾸면 저장해 둔 링크가 죽는다.
+        await apiFetch(`/orgs/${encodeURIComponent(orgForm.org.slug)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+    const message = await errorFrom(res)
+    if (!message) fetchTree()
+    return message
+  }
+
+  const confirmOrgDelete = async () => {
+    const slug = orgDelete.org.slug
+    const res = await apiFetch(`/orgs/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+    const message = await errorFrom(res)
+    if (!message) {
+      if (selected === slug) setSelected('')
+      fetchTree()
+    }
+    return message
+  }
+
+  /**
+   * 드래그로 옮긴 결과를 보낸다.
+   *
+   * 순서 매기기는 서버가 한다 — 화면이 형제 전부의 번호를 계산해 보내면 요청이
+   * 여러 개로 쪼개지고, 그중 하나가 실패하면 트리가 반쯤 옮겨진 채 남는다.
+   */
+  const handleMoveOrg = async (slug, parentSlug, position) => {
+    const res = await apiFetch(`/orgs/${encodeURIComponent(slug)}/move`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() }),
+      body: JSON.stringify({ parent_slug: parentSlug, position }),
     })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      window.alert(body.error || '이름을 바꾸지 못했습니다.')
-      return
-    }
-    fetchTree()
-  }
-
-  const handleDeleteOrg = async (org) => {
-    if (!window.confirm(`'${org.name}' 조직을 삭제합니다.
-
-하위 조직이나 게시된 카드가 있으면 삭제되지 않습니다.`)) return
-    const res = await apiFetch(`/orgs/${encodeURIComponent(org.slug)}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      // 무엇을 잃게 되는지 서버가 숫자로 말해 준다. 그대로 보여 준다.
-      window.alert(body.error || '삭제하지 못했습니다.')
-      return
-    }
-    if (selected === org.slug) setSelected('')
+    setOrgError(await errorFrom(res))
+    // 성공이든 실패든 서버 상태로 다시 그린다. 실패했는데 화면만 옮겨져 있으면
+    // 다음 드래그가 있지도 않은 자리를 기준으로 계산된다.
     fetchTree()
   }
 
@@ -708,9 +764,10 @@ function MainPage() {
           selected={selected}
           onSelect={setSelected}
           isAdmin={!!user?.is_admin}
-          onAdd={handleAddOrg}
-          onRename={handleRenameOrg}
-          onDelete={handleDeleteOrg}
+          onAdd={openAddOrg}
+          onRename={openRenameOrg}
+          onDelete={openDeleteOrg}
+          onMove={handleMoveOrg}
         />
 
         <Main>
@@ -718,6 +775,16 @@ function MainPage() {
             <b>{selectedLabel}</b>
             {isPersonalView && ' — 아직 어디에도 올리지 않은 카드가 여기 있습니다'}
           </Crumb>
+
+          {/* 드래그 실패를 조용히 넘기지 않는다. 트리는 서버 상태로 되돌아가
+              제자리로 튕겨 보이는데, 왜 안 됐는지 말해 주지 않으면 사람은
+              같은 동작을 몇 번 더 시도한다. */}
+          {orgError && (
+            <OrgErrorBar>
+              {orgError}
+              <CloseX onClick={() => setOrgError('')}>✕</CloseX>
+            </OrgErrorBar>
+          )}
 
           <CardGrid>
         {cards.map((card) => {
@@ -793,6 +860,25 @@ function MainPage() {
           )}
         </Main>
       </Body>
+
+      {orgForm && (
+        <OrgFormModal
+          mode={orgForm.mode}
+          parentName={orgForm.parentName}
+          initialName={orgForm.org?.name || ''}
+          onSubmit={submitOrgForm}
+          onClose={() => setOrgForm(null)}
+        />
+      )}
+
+      {orgDelete && (
+        <OrgDeleteModal
+          org={orgDelete.org}
+          childCount={orgDelete.childCount}
+          onConfirm={confirmOrgDelete}
+          onClose={() => setOrgDelete(null)}
+        />
+      )}
 
       {mountTarget && (
         <PublishToOrgDialog

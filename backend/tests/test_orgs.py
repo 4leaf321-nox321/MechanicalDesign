@@ -304,3 +304,82 @@ def test_deleting_a_card_removes_its_mounts(app, client):
     client.delete(f'/api/cards/{card_id}', headers=head)
     with app.app_context():
         assert CardMount.query.filter_by(org_slug=team).count() == 0
+
+
+# --- 드래그로 옮기기 ---------------------------------------------------------------
+
+def _slugs_in_order(client, head, parent=None):
+    body = client.get('/api/orgs/tree', headers=head).get_json()
+
+    def find(nodes):
+        for n in nodes:
+            if n['slug'] == parent:
+                return n['children']
+            hit = find(n['children'])
+            if hit is not None:
+                return hit
+        return None
+
+    nodes = body['tree'] if parent is None else find(body['tree'])
+    return [n['slug'] for n in nodes]
+
+
+def test_move_reorders_siblings(app, client):
+    """드래그로 순서를 바꾼다. 서버가 형제 전부를 0부터 다시 매긴다."""
+    _user(app, 'admin@x.com', admin=True)
+    head = _login(client, 'admin@x.com')
+    a, b, c = _org(app, '가팀'), _org(app, '나팀'), _org(app, '다팀')
+    assert _slugs_in_order(client, head) == [a, b, c]
+
+    r = client.put(f'/api/orgs/{c}/move', json={'parent_slug': None, 'position': 0},
+                   headers=head)
+    assert r.status_code == 200
+    assert _slugs_in_order(client, head) == [c, a, b]
+
+
+def test_move_changes_parent(app, client):
+    _user(app, 'admin@x.com', admin=True)
+    head = _login(client, 'admin@x.com')
+    div = _org(app, '설계본부')
+    team = _org(app, '설계1팀')
+
+    client.put(f'/api/orgs/{team}/move', json={'parent_slug': div, 'position': 0},
+               headers=head)
+    assert _slugs_in_order(client, head) == [div]
+    assert _slugs_in_order(client, head, parent=div) == [team]
+
+
+def test_move_into_own_descendant_is_refused(app, client):
+    """드래그는 손이 미끄러지기 쉽다. 막지 않으면 그 가지가 트리에서 사라진다."""
+    _user(app, 'admin@x.com', admin=True)
+    head = _login(client, 'admin@x.com')
+    div = _org(app, '설계본부')
+    team = _org(app, '설계1팀', parent=div)
+
+    r = client.put(f'/api/orgs/{div}/move', json={'parent_slug': team, 'position': 0},
+                   headers=head)
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-ORG-0103'
+    # 실패한 이동은 아무것도 바꾸지 않는다.
+    assert _slugs_in_order(client, head) == [div]
+
+
+def test_move_position_out_of_range_lands_at_the_end(app, client):
+    """드래그 중 목록이 바뀌었을 때 오류보다 '맨 뒤' 가 기대에 가깝다."""
+    _user(app, 'admin@x.com', admin=True)
+    head = _login(client, 'admin@x.com')
+    a, b = _org(app, '가팀'), _org(app, '나팀')
+
+    client.put(f'/api/orgs/{a}/move', json={'parent_slug': None, 'position': 99},
+               headers=head)
+    assert _slugs_in_order(client, head) == [b, a]
+
+
+def test_only_admin_can_move(app, client):
+    _user(app, 'kim@x.com')
+    _user(app, 'admin@x.com', admin=True)
+    a = _org(app, '가팀')
+
+    r = client.put(f'/api/orgs/{a}/move', json={'parent_slug': None, 'position': 0},
+                   headers=_login(client, 'kim@x.com'))
+    assert r.status_code == 403

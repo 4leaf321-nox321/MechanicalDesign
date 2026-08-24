@@ -181,6 +181,52 @@ def _next_sort_order(parent_slug):
     return (last or 0) + 1
 
 
+def move_org(slug, new_parent_slug, position):
+    """조직을 옮기고 형제 사이 순서를 정한다.
+
+    **순서 매기기를 서버가 한다.** 화면이 형제 전부의 sort_order 를 계산해
+    보내면 요청이 여러 개로 쪼개지고, 그중 하나가 실패한 순간 트리가 반쯤
+    옮겨진 상태로 남는다. 여기서는 한 번에 끝나거나 아무것도 안 바뀐다.
+
+    `position` 은 새 부모의 자식들 중 **몇 번째 자리에 끼울지**다(0부터).
+    범위를 벗어나면 끝으로 보낸다 — 드래그 중 목록이 바뀌었을 때 오류를 내는
+    것보다 "맨 뒤" 가 사람이 기대하는 결과에 가깝다.
+    """
+    org = db.session.get(Organization, slug)
+    if org is None or org.kind != 'org':
+        raise AppError('MD-ORG-0104', f"조직 '{slug}' 을 찾을 수 없습니다.", status=404)
+
+    new_parent_slug = new_parent_slug or None
+    if new_parent_slug:
+        parent = db.session.get(Organization, new_parent_slug)
+        if parent is None or parent.kind != 'org':
+            raise AppError('MD-ORG-0101',
+                           f"상위 조직 '{new_parent_slug}' 을 찾을 수 없습니다.")
+    assert_no_cycle(slug, new_parent_slug)
+
+    siblings = [
+        o for o in (Organization.query
+                    .filter(Organization.kind == 'org',
+                            Organization.parent_slug.is_(None)
+                            if new_parent_slug is None
+                            else Organization.parent_slug == new_parent_slug)
+                    .order_by(Organization.sort_order, Organization.name).all())
+        if o.slug != slug
+    ]
+
+    index = len(siblings) if position is None else max(0, min(int(position), len(siblings)))
+    siblings.insert(index, org)
+
+    org.parent_slug = new_parent_slug
+    # 형제 전부를 0부터 다시 매긴다. 빈 번호를 남기며 끼워 넣는 방식은 옮길
+    # 때마다 간격이 좁아져 언젠가 자리가 없어지고, 그때 조용히 순서가 뒤집힌다.
+    for i, row in enumerate(siblings):
+        row.sort_order = i
+
+    db.session.commit()
+    return org
+
+
 def delete_org(slug):
     """조직을 지운다. **하위가 있거나 게시된 카드가 있으면 막는다.**
 

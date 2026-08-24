@@ -11,6 +11,18 @@
  *
  * **개인 공간은 트리에 섞지 않는다.** 사람이 늘 때마다 조직도 끝이 사람 목록으로
  * 길어지면 정작 부서를 찾을 수 없다.
+ *
+ * 관리자는 드래그로 조직을 옮긴다. 줄마다 **떨어뜨릴 자리가 둘**이다.
+ *
+ *     줄 위쪽 얇은 띠   그 조직의 **바로 앞 형제**가 된다
+ *     줄 본체          그 조직의 **마지막 자식**이 된다
+ *
+ * "뒤에 놓기" 는 따로 두지 않았다. 부모 줄에 떨어뜨리면 맨 뒤로 가므로 두
+ * 자리만으로 트리의 어느 위치든 갈 수 있고, 셋이 되면 좁은 줄에서 어디에
+ * 떨어질지 눈으로 가늠할 수 없어진다.
+ *
+ * 라이브러리를 쓰지 않고 브라우저 기본 DnD 로 만든다. 트리는 기껏해야 수십 줄이라
+ * 가상 스크롤도 충돌 판정도 필요 없고, 배포 패키지에 의존성을 얹을 이유가 없다.
  */
 
 import React, { useState } from 'react'
@@ -65,6 +77,18 @@ const Row = styled.div`
   &:hover .org-actions {
     opacity: 1;
   }
+
+  /* 안쪽으로 들어가는 중. 테두리로 표시한다 — 배경색을 바꾸면 선택 상태와
+     구분되지 않는다. */
+  ${(p) =>
+    p.$dropInside &&
+    `
+    outline: 2px solid #3498db;
+    outline-offset: -2px;
+    background: #eaf4fc;
+  `}
+
+  ${(p) => p.$dragging && 'opacity: 0.4;'}
 `
 
 /** 접기 화살표. 하위가 없으면 자리만 차지한다 — 없으면 글자가 좌우로 흔들린다. */
@@ -81,6 +105,26 @@ const Caret = styled.button`
   line-height: 1;
   transform: rotate(${(p) => (p.$open ? 90 : 0)}deg);
   transition: transform 0.12s;
+`
+
+/** 줄 위쪽 얇은 띠 — 여기 떨어뜨리면 앞 형제가 된다. */
+const DropBand = styled.div`
+  height: 6px;
+  margin-top: -3px;
+  margin-bottom: -3px;
+  position: relative;
+  z-index: 1;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: ${(p) => 12 + p.$depth * 14}px;
+    right: 10px;
+    top: 2px;
+    height: 2px;
+    border-radius: 2px;
+    background: ${(p) => (p.$over ? '#3498db' : 'transparent')};
+  }
 `
 
 const Label = styled.span`
@@ -119,6 +163,17 @@ const IconBtn = styled.button`
   }
 `
 
+const DragHint = styled.div`
+  margin: 12px;
+  padding: 9px 11px;
+  background: #eef6fd;
+  border: 1px solid #cfe4f7;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  color: #35618a;
+  line-height: 1.6;
+`
+
 const AddRootBtn = styled.button`
   margin: 10px 12px 0;
   padding: 6px 10px;
@@ -136,17 +191,68 @@ const AddRootBtn = styled.button`
   }
 `
 
-function OrgNode({ node, depth, selected, onSelect, isAdmin, onAdd, onRename, onDelete }) {
+function OrgNode({
+  node, depth, index, parentSlug, selected, onSelect, isAdmin,
+  onAdd, onRename, onDelete, dnd,
+}) {
   const [open, setOpen] = useState(true)
   const has = node.children && node.children.length > 0
   const active = selected === node.slug
 
+  const draggable = isAdmin && !!dnd
+  const forbidden = dnd?.forbidden?.has(node.slug)
+
+  // 자기 자신과 그 하위로는 떨어뜨릴 수 없다. 허용해 두면 그 가지가 루트에서
+  // 끊겨 트리에서 통째로 사라진다 — 서버도 막지만, 막힐 자리를 파란 선으로
+  // 안내하면 사람은 될 줄 알고 놓는다.
+  const allowInside = draggable && dnd.dragging && !forbidden
+  const allowBefore = draggable && dnd.dragging && !forbidden
+
   return (
     <>
+      {allowBefore && (
+        <DropBand
+          $depth={depth}
+          $over={dnd.over === `before:${node.slug}`}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            dnd.setOver(`before:${node.slug}`)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            dnd.drop({ parentSlug, position: index })
+          }}
+        />
+      )}
       <Row
         $depth={depth}
         $active={active}
         $color={node.color}
+        $dragging={dnd?.dragging === node.slug}
+        $dropInside={dnd?.over === `inside:${node.slug}`}
+        draggable={draggable}
+        onDragStart={(e) => {
+          e.stopPropagation()
+          e.dataTransfer.effectAllowed = 'move'
+          // 텍스트를 실어야 파이어폭스가 드래그를 시작한다.
+          e.dataTransfer.setData('text/plain', node.slug)
+          dnd.start(node.slug)
+        }}
+        onDragEnd={() => dnd?.end()}
+        onDragOver={(e) => {
+          if (!allowInside) return
+          e.preventDefault()
+          dnd.setOver(`inside:${node.slug}`)
+        }}
+        onDrop={(e) => {
+          if (!allowInside) return
+          e.preventDefault()
+          e.stopPropagation()
+          // 줄 본체에 놓으면 그 조직의 **마지막 자식**이 된다.
+          dnd.drop({ parentSlug: node.slug, position: null })
+        }}
         onClick={() => onSelect(node.slug)}
         title={node.description || node.name}
       >
@@ -174,26 +280,96 @@ function OrgNode({ node, depth, selected, onSelect, isAdmin, onAdd, onRename, on
         )}
       </Row>
       {open &&
-        (node.children || []).map((child) => (
+        (node.children || []).map((child, i) => (
           <OrgNode
             key={child.slug}
             node={child}
             depth={depth + 1}
+            index={i}
+            parentSlug={node.slug}
             selected={selected}
             onSelect={onSelect}
             isAdmin={isAdmin}
             onAdd={onAdd}
             onRename={onRename}
             onDelete={onDelete}
+            dnd={dnd}
           />
         ))}
+      {/* 자식들의 맨 뒤. 접혀 있으면 줄 본체에 놓는 것과 같으므로 안 그린다. */}
+      {open && has && dnd?.dragging && !forbidden && (
+        <DropBand
+          $depth={depth + 1}
+          $over={dnd.over === `last:${node.slug}`}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            dnd.setOver(`last:${node.slug}`)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            dnd.drop({ parentSlug: node.slug, position: null })
+          }}
+        />
+      )}
     </>
   )
 }
 
-function OrgTree({ tree, personal, selected, onSelect, isAdmin, onAdd, onRename, onDelete }) {
+/** 자신과 모든 하위의 slug. 드래그를 시작할 때 한 번만 구한다. */
+function collectSubtree(nodes, slug, found = false, out = new Set()) {
+  for (const n of nodes) {
+    const hit = found || n.slug === slug
+    if (hit) out.add(n.slug)
+    collectSubtree(n.children || [], slug, hit, out)
+  }
+  return out
+}
+
+function OrgTree({
+  tree, personal, selected, onSelect, isAdmin,
+  onAdd, onRename, onDelete, onMove,
+}) {
+  const [dragging, setDragging] = useState(null)
+  const [over, setOver] = useState(null)
+
+  const dnd = isAdmin && onMove
+    ? {
+        dragging,
+        over,
+        forbidden: dragging ? collectSubtree(tree, dragging) : new Set(),
+        setOver,
+        start: (slug) => {
+          setDragging(slug)
+          setOver(null)
+        },
+        end: () => {
+          setDragging(null)
+          setOver(null)
+        },
+        drop: ({ parentSlug, position }) => {
+          const slug = dragging
+          setDragging(null)
+          setOver(null)
+          if (slug) onMove(slug, parentSlug ?? null, position)
+        },
+      }
+    : null
+
   return (
-    <Panel>
+    <Panel
+      onDragOver={(e) => {
+        if (dnd?.dragging) e.preventDefault()
+      }}
+      onDrop={(e) => {
+        // 패널 빈 자리에 놓으면 **최상위 맨 뒤**. 줄과 줄 사이가 아니면 갈 곳이
+        // 없어서, 최상위로 꺼내려면 이 자리가 있어야 한다.
+        if (!dnd?.dragging) return
+        e.preventDefault()
+        dnd.drop({ parentSlug: null, position: null })
+      }}
+    >
       <SectionLabel>내 공간</SectionLabel>
       {personal && (
         <Row
@@ -216,11 +392,14 @@ function OrgTree({ tree, personal, selected, onSelect, isAdmin, onAdd, onRename,
         <Caret $has={false} />
         <Label>전체</Label>
       </Row>
-      {tree.map((node) => (
+      {tree.map((node, i) => (
         <OrgNode
           key={node.slug}
           node={node}
           depth={0}
+          index={i}
+          parentSlug={null}
+          dnd={dnd}
           selected={selected}
           onSelect={onSelect}
           isAdmin={isAdmin}
@@ -229,6 +408,14 @@ function OrgTree({ tree, personal, selected, onSelect, isAdmin, onAdd, onRename,
           onDelete={onDelete}
         />
       ))}
+
+      {dnd?.dragging && (
+        <DragHint>
+          줄 <b>사이</b>에 놓으면 그 앞으로, 줄 <b>위</b>에 놓으면 그 안으로 들어갑니다.
+          <br />
+          빈 곳에 놓으면 최상위 맨 뒤로 갑니다.
+        </DragHint>
+      )}
 
       {isAdmin && <AddRootBtn onClick={() => onAdd(null)}>＋ 조직 추가</AddRootBtn>}
     </Panel>

@@ -93,6 +93,15 @@ def update_org(slug):
     return jsonify(org.to_dict())
 
 
+@orgs_bp.route('/<path:slug>/move', methods=['PUT'])
+@admin_required
+def move_org(slug):
+    """드래그로 옮긴 결과를 반영한다. 부모와 형제 순서를 한 번에 정한다."""
+    data = request.get_json() or {}
+    org = services.move_org(slug, data.get('parent_slug'), data.get('position'))
+    return jsonify(org.to_dict())
+
+
 @orgs_bp.route('/<path:slug>', methods=['DELETE'])
 @admin_required
 def delete_org(slug):
