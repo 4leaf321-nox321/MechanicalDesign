@@ -11,7 +11,7 @@
 
 import React, { useMemo, useState } from 'react'
 import styled from 'styled-components'
-import { fmt, goalSeek } from '../utils/goalSeek'
+import { fixedInputs, fmt, goalSeek } from '../utils/goalSeek'
 
 const Wrap = styled.div`
   background: white;
@@ -58,6 +58,42 @@ const Input = styled.input`
   border-radius: 6px;
   font-size: 0.88rem;
   font-weight: 400;
+`
+
+const Fixed = styled.div`
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: #f8f9fb;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+`
+
+const FixedLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  margin-bottom: 8px;
+`
+
+const FixedList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+`
+
+const FixedItem = styled.span`
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: ${p => (p.$blank ? '#fdecea' : '#eef2f7')};
+  color: ${p => (p.$blank ? '#a4343a' : '#4b5563')};
+  border: 1px solid ${p => (p.$blank ? '#f5c6cb' : '#dfe3ea')};
+`
+
+const FixedWarn = styled.div`
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: #a4343a;
 `
 
 const RunRow = styled.div`
@@ -164,6 +200,14 @@ function GoalSeekPanel({ variables, values, onApply }) {
   const [max, setMax] = useState(() => solvable[0]?.max_value ?? '')
   const [result, setResult] = useState(null)
 
+  // **무엇이 고정되는지 그대로 보여 준다.** 말로만 '화면 값으로 고정' 이라고
+  // 하면 그 값이 무엇인지 확인할 방법이 없고, 비어 있어 기본값으로 떨어진
+  // 칸은 더더욱 안 보인다.
+  const fixed = useMemo(
+    () => fixedInputs(variables, values, inputId),
+    [variables, values, inputId],
+  )
+
   const chosenInput = solvable.find(v => String(v.id) === String(inputId))
   const chosenOutput = targets.find(v => String(v.id) === String(outputId))
 
@@ -242,6 +286,31 @@ function GoalSeekPanel({ variables, values, onApply }) {
           <Input value={max} onChange={(e) => { setMax(e.target.value); setResult(null) }} />
         </Field>
       </Form>
+
+      {fixed.length > 0 && (
+        <Fixed>
+          <FixedLabel>이 값들로 고정한 채 찾습니다</FixedLabel>
+          <FixedList>
+            {fixed.map(f => (
+              <FixedItem key={f.variable.id} $blank={f.isBlank}>
+                {f.variable.symbol || f.variable.name}
+                {' = '}
+                {f.isBlank
+                  ? '(비어 있음)'
+                  : Array.isArray(f.value) ? `[${f.value.length}개]` : String(f.value)}
+                {f.variable.unit && !f.isBlank ? ` ${f.variable.unit}` : ''}
+                {f.usedDefault && !f.isBlank ? ' (기본값)' : ''}
+              </FixedItem>
+            ))}
+          </FixedList>
+          {fixed.some(f => f.isBlank) && (
+            <FixedWarn>
+              비어 있는 입력이 있으면 계산이 되지 않습니다. 단일 계산 탭에서 채운 뒤
+              다시 오세요.
+            </FixedWarn>
+          )}
+        </Fixed>
+      )}
 
       <RunRow>
         <RunBtn onClick={run}>역계산</RunBtn>

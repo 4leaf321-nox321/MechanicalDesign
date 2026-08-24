@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { goalSeek } from './goalSeek'
+import { fixedInputs, goalSeek } from './goalSeek'
 
 /** x(=입력)에서 y(=출력)를 내는 카드. 수식은 카드 정의로 준다. */
 const card = (formula) => [
@@ -109,5 +109,44 @@ describe('다른 입력은 화면 값 그대로 쓴다', () => {
     const got = goalSeek(vars, { 1: 0, 3: 4 },
                          { inputId: 1, outputId: 2, target: 20, min: 0, max: 100 })
     expect(got.solutions[0].input).toBeCloseTo(5, 8)
+  })
+})
+
+describe('무엇이 고정되는지', () => {
+  const vars = [
+    { id: 1, category: 'input', var_type: 'text', symbol: 'x', name: 'x' },
+    { id: 2, category: 'input', var_type: 'text', symbol: 'F', name: '하중' },
+    { id: 3, category: 'input', var_type: 'slider', symbol: 'k', name: '계수',
+      min_value: 2, max_value: 10 },
+    { id: 4, category: 'output', var_type: 'formula', symbol: 'y', name: 'y',
+      formula: 'F / x * k' },
+  ]
+
+  it('푸는 변수는 목록에서 빠진다', () => {
+    const got = fixedInputs(vars, { 2: 600, 3: 4 }, 1)
+    expect(got.map(f => f.variable.symbol)).toEqual(['F', 'k'])
+  })
+
+  it('안 채운 슬라이더는 최솟값이 쓰인다고 표시한다', () => {
+    const got = fixedInputs(vars, { 2: 600 }, 1)
+    const k = got.find(f => f.variable.symbol === 'k')
+    expect(k.value).toBe(2)
+    expect(k.usedDefault).toBe(true)
+    expect(k.isBlank).toBe(false)
+  })
+
+  it('빈 텍스트 입력은 비었다고 표시한다', () => {
+    const got = fixedInputs(vars, { 3: 4 }, 1)
+    expect(got.find(f => f.variable.symbol === 'F').isBlank).toBe(true)
+  })
+
+  it('계산이 통째로 안 되면 어느 입력이 비었는지 이름을 댄다', () => {
+    // "다른 입력값을 확인하세요" 만으로는 어디를 볼지 알 수 없다.
+    const got = goalSeek(vars, { 3: 4 },
+                         { inputId: 1, outputId: 4, target: 20, min: 1, max: 100 })
+    expect(got.ok).toBe(false)
+    expect(got.reason).toBe('error')
+    expect(got.blanks).toEqual(['하중 (F)'])
+    expect(got.message).toContain('하중 (F)')
   })
 })

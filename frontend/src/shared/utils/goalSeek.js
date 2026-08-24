@@ -22,7 +22,26 @@
  * 응력은 12~48 이라 200 은 나올 수 없다" 를 화면이 말할 수 있다.
  */
 
-import { calculateCard } from './calcEngine'
+import { calculateCard, defaultInputValue } from './calcEngine'
+
+/**
+ * 푸는 변수 말고 **실제로 고정될 값**들. 화면과 계산이 같은 것을 보게 한다.
+ *
+ * 화면이 따로 계산하면 "화면에는 2 라고 적혀 있는데 계산은 다른 값으로 돈" 상태가
+ * 생긴다. 비어 있는 칸이 타입별 기본값으로 떨어지기 때문에 특히 그렇다 —
+ * 슬라이더는 최솟값, 드롭다운은 첫 항목, 배열은 빈 배열이다.
+ */
+export function fixedInputs(variables, baseValues, solvedId) {
+  return (variables || [])
+    .filter(v => v.category === 'input' && String(v.id) !== String(solvedId))
+    .map(v => {
+      const raw = baseValues?.[v.id]
+      const value = raw ?? defaultInputValue(v)
+      const isBlank = value === '' || value === null || value === undefined
+        || (Array.isArray(value) && value.length === 0)
+      return { variable: v, value, isBlank, usedDefault: raw === undefined || raw === null }
+    })
+}
 
 /** 구간을 훑는 점의 수. 촘촘할수록 답을 놓칠 확률이 줄지만 그만큼 느리다. */
 const SCAN_POINTS = 200
@@ -91,10 +110,20 @@ export function goalSeek(variables, baseValues, { inputId, outputId, target, min
   }
 
   if (failures > SCAN_POINTS) {
+    // **어느 입력이 비었는지 짚어 준다.** "다른 입력값을 확인하세요" 만으로는
+    // 어디를 볼지 알 수 없어, 사람은 입력을 하나씩 눌러 보게 된다. 계산이
+    // 통째로 안 되는 이유는 대개 빈 칸 하나다.
+    const blanks = fixedInputs(variables, baseValues, inputId)
+      .filter(f => f.isBlank)
+      .map(f => f.variable.name + (f.variable.symbol ? ` (${f.variable.symbol})` : ''))
+
     return {
       ok: false,
       reason: 'error',
-      message: '이 범위에서 계산이 되지 않습니다. 다른 입력값이나 범위를 확인해 주세요.',
+      blanks,
+      message: blanks.length
+        ? `이 범위에서 계산이 되지 않습니다. 비어 있는 입력이 있습니다: ${blanks.join(', ')}`
+        : '이 범위에서 계산이 되지 않습니다. 수식이나 범위를 확인해 주세요.',
     }
   }
 
