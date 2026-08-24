@@ -70,6 +70,20 @@ function _requireNumber(v, where) {
 }
 
 /**
+ * 원소별 단항 — 배열이면 원소마다, 스칼라면 그대로.
+ *
+ * `sin`·`sqrt` 같은 함수가 배열을 받으면 전에는 `Math.sin(배열)` 이 되어
+ * ArrayValue 의 valueOf 가 걸렸다. 그런데 그 오류 문구는 "+ - * / 를 쓰지
+ * 말라" 여서, `+` 를 쓴 적도 없는 사람에게 **엉뚱한 곳을 고치라고** 말했다.
+ * add/sub/mul/div 처럼 원소별로 도는 게 맞다 — 배열의 각 각도에 sin 을
+ * 걸겠다는 뜻 말고 달리 읽을 방법이 없다.
+ */
+function _elementwise(name, x, op) {
+  if (_isArrayValue(x)) return ArrayValue.from(x, (v) => op(_requireNumber(v, name)))
+  return op(_requireNumber(x, name))
+}
+
+/**
  * 원소별 연산 — 배열끼리, 또는 배열과 스칼라.
  *
  * 길이가 다른 두 배열은 **오류**다. 짧은 쪽에 맞춰 자르거나 0으로 채우면
@@ -98,22 +112,23 @@ function _pairwise(name, a, b, op) {
 }
 
 const MATH_FUNCS = {
-  sin: (x) => Math.sin(x),
-  cos: (x) => Math.cos(x),
-  tan: (x) => Math.tan(x),
-  asin: (x) => Math.asin(x),
-  acos: (x) => Math.acos(x),
-  atan: (x) => Math.atan(x),
-  atan2: (y, x) => Math.atan2(y, x),
-  radians: (deg) => deg * Math.PI / 180,
-  degrees: (rad) => rad * 180 / Math.PI,
+  // --- 숫자 — 배열을 주면 원소마다 적용되고 결과도 배열이다 ---
+  sin: (x) => _elementwise('sin', x, Math.sin),
+  cos: (x) => _elementwise('cos', x, Math.cos),
+  tan: (x) => _elementwise('tan', x, Math.tan),
+  asin: (x) => _elementwise('asin', x, Math.asin),
+  acos: (x) => _elementwise('acos', x, Math.acos),
+  atan: (x) => _elementwise('atan', x, Math.atan),
+  atan2: (y, x) => _pairwise('atan2', y, x, (a, b) => Math.atan2(a, b)),
+  radians: (deg) => _elementwise('radians', deg, (d) => d * Math.PI / 180),
+  degrees: (rad) => _elementwise('degrees', rad, (r) => r * 180 / Math.PI),
   pi: () => Math.PI,
-  abs: (x) => Math.abs(x),
-  sqrt: (x) => Math.sqrt(x),
-  log: (x) => Math.log(x),
-  log10: (x) => Math.log10(x),
-  exp: (x) => Math.exp(x),
-  pow: (b, e) => Math.pow(b, e),
+  abs: (x) => _elementwise('abs', x, Math.abs),
+  sqrt: (x) => _elementwise('sqrt', x, Math.sqrt),
+  log: (x) => _elementwise('log', x, Math.log),
+  log10: (x) => _elementwise('log10', x, Math.log10),
+  exp: (x) => _elementwise('exp', x, Math.exp),
+  pow: (b, e) => _pairwise('pow', b, e, (x, y) => Math.pow(x, y)),
 
   // --- 집계 — 배열을 받아 값 하나로 줄인다 ---
   min: (...args) => Math.min(..._flatten(args)),
@@ -160,7 +175,7 @@ const MATH_FUNCS = {
   },
 
   // 정규분포 누적 확률 (%) — value 이하일 확률
-  prob: (value, mean, stdev) => _normCdf(value, mean, stdev) * 100,
+  prob: (value, mean, stdev) => _elementwise('prob', value, (v) => _normCdf(v, mean, stdev) * 100),
 }
 export const MATH_FUNC_NAMES = Object.keys(MATH_FUNCS)
 export const RESERVED_NAMES = new Set(MATH_FUNC_NAMES)

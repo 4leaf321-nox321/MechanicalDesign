@@ -123,6 +123,9 @@
 `radians(deg)` `degrees(rad)` `pi()` `abs` `sqrt` `log` `log10` `exp` `pow(b,e)`
 `prob(value, mean, stdev)` — 정규분포 누적 확률(%)
 
+이 함수들은 **배열을 주면 원소마다 걸리고 결과도 배열**입니다.
+`sin(radians(A))` 는 A 의 각 각도에 sin 을 건 배열입니다.
+
 **집계 — 배열을 값 하나로 줄인다**
 `min` `max` `average` `sum` `count` `size`
 

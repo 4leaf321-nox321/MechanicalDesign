@@ -135,6 +135,53 @@ describe('배열 — 만들기와 꺼내기', () => {
   })
 })
 
+describe('수학 함수는 배열에도 원소별로 걸린다', () => {
+  // 전에는 sin(배열) 이 ArrayValue.valueOf 에 걸려 "+ - * / 를 쓰지 마세요" 라는
+  // **엉뚱한** 오류를 냈다. + 를 쓴 적도 없는 사람이 그 문구를 보고 add() 를
+  // 찾다가, sin 에는 그런 짝이 없다는 것을 뒤늦게 알게 된다.
+  it.each([
+    ['sqrt(L)', [1, Math.SQRT2, Math.sqrt(3), 2]],
+    ['abs(sub(0, L))', [1, 2, 3, 4]],
+    ['radians(range(0, 180, 90))', [0, Math.PI / 2, Math.PI]],
+  ])('%s', (expr, want) => {
+    expect(run(expr)).toEqual(want)
+  })
+
+  it('sin·cos 는 각 원소에 걸린다', () => {
+    const got = run('sin(radians(range(0, 90, 30)))')
+    expect(got.map((v) => Number(v.toFixed(4)))).toEqual([0, 0.5, 0.8660, 1])
+  })
+
+  it('원소별 결과를 다시 집계할 수 있다 — sin+cos 의 최댓값은 √2', () => {
+    const got = run('max(add(sin(radians(range(0, 360, 5))), cos(radians(range(0, 360, 5)))))')
+    expect(got).toBeCloseTo(Math.SQRT2, 10)
+  })
+
+  it('두 자리 함수도 원소별 — pow·atan2', () => {
+    expect(run('pow(L, 2)')).toEqual([1, 4, 9, 16])
+    expect(run('pow(2, L)')).toEqual([2, 4, 8, 16])
+    expect(run('atan2(L, L)')).toEqual([Math.PI / 4, Math.PI / 4, Math.PI / 4, Math.PI / 4])
+  })
+
+  it('스칼라는 그대로 스칼라다', () => {
+    expect(run('sqrt(16)')).toBe(4)
+    expect(run('sin(radians(30))')).toBeCloseTo(0.5, 10)
+  })
+
+  it('길이가 다른 배열은 두 자리 함수에서도 막힌다', () => {
+    expect(run('pow(L, short)')).toBe('ERR(pow: 길이가 다른 배열입니다 (4 vs 2))')
+  })
+
+  it('숫자가 아닌 원소는 그 함수 이름으로 알려 준다', () => {
+    expect(run('sqrt(txt)')).toBe('ERR(sqrt: 숫자가 아닙니다 (a))')
+  })
+
+  it('집계 함수는 여전히 값 하나로 줄인다', () => {
+    expect(run('sum(L)')).toBe(10)
+    expect(run('max(L)')).toBe(4)
+  })
+})
+
 describe('배열에 + - * / 를 쓰면 막는다', () => {
   // 자바스크립트에서 [1,2] + [3,4] 는 오류가 아니라 "1,23,4" 라는 문자열이다.
   // 그대로 두면 틀린 값이 조용히 흘러간다.

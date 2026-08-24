@@ -1972,8 +1972,11 @@ function VariableForm({ initial, containers = [], variables = [], onSave, onCanc
                 수식에서는 함수로 다룹니다 — 집계: <b>sum, average, min, max, count</b>,
                 {' '}원소별 계산: <b>add, sub, mul, div</b>, 꺼내기: <b>at(배열, 번째)</b>.
                 <br />
-                예) <b>{'sum(L)'}</b>, <b>{'average(L)'}</b>, <b>{'max(mul(L, W))'}</b>
-                {' '}— 원소별 결과는 다시 배열이 됩니다.
+                <b>sin, cos, sqrt, abs, log, exp</b> 같은 수학 함수도 배열을 주면
+                {' '}원소마다 걸립니다.
+                <br />
+                예) <b>{'sum(L)'}</b>, <b>{'average(L)'}</b>, <b>{'max(mul(L, W))'}</b>,
+                {' '}<b>{'sin(radians(A))'}</b> — 원소별 결과는 다시 배열이 됩니다.
                 <br />
                 배열에 <b>+ - * /</b> 를 직접 쓰면 막습니다. 자바스크립트에서 그 연산이
                 엉뚱한 문자열을 만들어 조용히 틀린 값이 되기 때문입니다.
