@@ -11,6 +11,7 @@ import DoeResultsView from './DOE/DoeResultsView'
 import { runFactorial, runLhs, combinationCount, expandRange } from '../utils/doeEngine'
 import { apiFetch } from '../api/client'
 import LoadInputsDialog from './LoadInputsDialog'
+import GoalSeekPanel from './GoalSeekPanel'
 import { useAuth } from '../auth/AuthContext'
 
 
@@ -635,9 +636,24 @@ function ModulePlaceholder({ onGoHome }) {
         <ModeTabs>
           <ModeTab $active={mode === 'single'} onClick={() => setMode('single')}>단일 계산</ModeTab>
           <ModeTab $active={mode === 'doe'} onClick={() => setMode('doe')}>DOE 탐색</ModeTab>
+          <ModeTab $active={mode === 'goal'} onClick={() => setMode('goal')}>역계산</ModeTab>
         </ModeTabs>
 
-        {mode === 'single' ? renderSingleMode() : renderDoeMode()}
+        {mode === 'single' && renderSingleMode()}
+        {mode === 'doe' && renderDoeMode()}
+        {mode === 'goal' && (
+          <GoalSeekPanel
+            variables={variables}
+            values={inputValues}
+            onApply={(varId, value) => {
+              // 찾은 값을 입력에 넣고 **단일 계산으로 돌려보낸다.** 역계산
+              // 화면에 남겨 두면 그 값으로 카드 전체가 어떻게 되는지를 못 본다.
+              setInputValues(prev => ({ ...prev, [varId]: value }))
+              setLastResults(null)
+              setMode('single')
+            }}
+          />
+        )}
       </ModuleLayout>
 
       {showValidation && card && (
