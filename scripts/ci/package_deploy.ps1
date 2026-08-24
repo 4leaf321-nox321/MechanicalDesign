@@ -12,6 +12,7 @@
     mcp_server\          밖의 AI 가 붙는 MCP 서버 (선택 기능, 별도 venv)
     frontend\dist\       빌드된 SPA. 백엔드가 같은 프로세스에서 서빙한다
     run_server.ps1       콘솔 기동
+    run_mcp_server.ps1   MCP 콘솔 기동 (-Setup 이면 가상환경까지 — 관리자 불필요)
     install.ps1 / deploy.ps1 / rollback.ps1 / venv_sync.ps1 / precheck.ps1
     install-mcp.ps1      MCP 서버 설치 (선택)
     backup.ps1 / restore.ps1        백업과 **복원**. 복원은 기본이 리허설이다
@@ -213,7 +214,8 @@ Write-Host "  wheel $($wheels.Count) 개, 의존성 검사 통과"
 
 # --- 스크립트와 빌드 정보 ------------------------------------------------------
 Write-Host '실행·배포 스크립트 추가'
-Copy-Item -Force .\scripts\ci\run_server_template.ps1 .\deploy\run_server.ps1
+Copy-Item -Force .\scripts\ci\run_server_template.ps1     .\deploy\run_server.ps1
+Copy-Item -Force .\scripts\ci\run_mcp_server_template.ps1 .\deploy\run_mcp_server.ps1
 Copy-Item -Force .\scripts\deploy\venv_sync.ps1       .\deploy\venv_sync.ps1
 Copy-Item -Force .\scripts\deploy\deploy.ps1          .\deploy\deploy.ps1
 Copy-Item -Force .\scripts\deploy\rollback.ps1        .\deploy\rollback.ps1
