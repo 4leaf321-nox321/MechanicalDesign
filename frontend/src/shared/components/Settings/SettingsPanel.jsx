@@ -260,6 +260,15 @@ function SettingsPanel({ cardId, onClose }) {
     }
   }
 
+  /**
+   * 폼에 채워 넣을 값. `editingVar` 와 **다른 것**이다.
+   *
+   *   편집  editingVar = 그 변수, formInitial = 그 변수      → PUT
+   *   추가  editingVar = null,   formInitial = null         → POST
+   *   복사  editingVar = null,   formInitial = 원본의 사본  → POST
+   */
+  const [formInitial, setFormInitial] = useState(null)
+
   const handleSaveVariable = async (formData) => {
     try {
       const url = editingVar
@@ -298,15 +307,63 @@ function SettingsPanel({ cardId, onClose }) {
 
   const handleEdit = (variable) => {
     setEditingVar(variable)
+    setFormInitial(variable)
     setShowForm(true)
   }
 
   const handleAdd = () => {
     setEditingVar(null)
+    setFormInitial(null)
     setShowForm(true)
   }
 
+  /**
+   * 변수를 복사한다 — 값만 채워 주고 **저장은 사람이 누른다.**
+   *
+   * 바로 만들어 버리면 기호가 겹친 변수가 조용히 하나 더 생긴다. 계산은
+   * 그대로 돌고 검증에서만 경고가 뜨는데, 그 경고를 볼 이유가 없는
+   * 사람은 겹친 채로 쓰게 된다. 폼을 열어 두면 그 자리에서 고친다.
+   *
+   * 표·조건부·보간표 정의까지 통째로 따라온다 — 열 줄짜리 표를 다시
+   * 입력하지 않으려고 쓰는 기능이다.
+   */
+  const handleDuplicate = (variable) => {
+    const copy = { ...variable }
+    delete copy.id
+    delete copy.placements
+    copy.name = nextFreeName(variable.name)
+    copy.symbol = nextFreeSymbol(variable.symbol)
+    setEditingVar(null)
+    setFormInitial(copy)
+    setShowForm(true)
+  }
+
+  /** '폭' → '폭 사본', 이미 있으면 '폭 사본 2'. */
+  const nextFreeName = (name) => {
+    const taken = new Set(variables.map(v => v.name))
+    let candidate = (name || '변수') + ' 사본'
+    let n = 2
+    while (taken.has(candidate)) { candidate = (name || '변수') + ' 사본 ' + n; n += 1 }
+    return candidate
+  }
+
+  /**
+   * 'W' → 'W2'. 비어 있으면 비운 채로 둔다.
+   *
+   * 기호를 그대로 두면 겹친다. 겹친 기호는 수식에서 **어느 쪽을 가리키는지
+   * 알 수 없게** 만드는데, 그 상태로도 계산은 돌아서 눈에 띄지 않는다.
+   */
+  const nextFreeSymbol = (symbol) => {
+    if (!symbol) return ''
+    const taken = new Set(variables.map(v => v.symbol).filter(Boolean))
+    const base = symbol.replace(/[0-9]+$/, '') || symbol
+    let n = 2
+    while (taken.has(base + n)) n += 1
+    return base + n
+  }
+
   const handleCancel = () => {
+    setFormInitial(null)
     setShowForm(false)
     setEditingVar(null)
   }
@@ -433,7 +490,7 @@ function SettingsPanel({ cardId, onClose }) {
               {showForm ? (
                 <TabScroll>
                   <VariableForm
-                    initial={editingVar}
+                    initial={formInitial}
                     containers={containers}
                     variables={variables}
                     onSave={handleSaveVariable}
@@ -480,6 +537,7 @@ function SettingsPanel({ cardId, onClose }) {
                           </VarName>
                           <VarActions>
                             <IconBtn onClick={() => handleEdit(v)}>편집</IconBtn>
+                            <IconBtn onClick={() => handleDuplicate(v)} title="이 변수를 복사해 새로 만듭니다">복사</IconBtn>
                             <IconBtn $danger onClick={() => handleDeleteVariable(v.id)}>삭제</IconBtn>
                           </VarActions>
                         </VarHeader>

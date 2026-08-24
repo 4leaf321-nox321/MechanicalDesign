@@ -245,6 +245,48 @@ function TableDefinitionTab() {
     }
   }
 
+  /**
+   * 표를 통째로 복사한다.
+   *
+   * **이름이 겹치면 안 된다.** `POST /templates` 는 같은 이름·타입이 이미
+   * 있으면 새로 만들지 않고 **그것을 덮어쓴다.** 복사하려다 원본을 날리는
+   * 셈이라, 비어 있는 이름을 먼저 찾아 넣어 준다.
+   */
+  const duplicate = async (e, tpl) => {
+    e.stopPropagation()
+    setMessage(null)
+
+    const taken = new Set(tables.map(t => t.name))
+    let suggested = tpl.name + ' 사본'
+    let n = 2
+    while (taken.has(suggested)) { suggested = tpl.name + ' 사본 ' + n; n += 1 }
+
+    const name = window.prompt('복사본의 이름을 입력하세요.', suggested)
+    if (name === null) return
+    const trimmed = name.trim()
+    if (!trimmed) { setMessage({ error: true, text: '표 이름을 입력해주세요.' }); return }
+    if (taken.has(trimmed)) {
+      setMessage({ error: true, text: `'${trimmed}' 표가 이미 있습니다. 그 표를 덮어쓰게 되므로 다른 이름을 쓰세요.` })
+      return
+    }
+
+    try {
+      const res = await apiFetch('/templates', {
+        method: 'POST',
+        body: JSON.stringify({ name: trimmed, var_type: 'table', data: tpl.data }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setMessage({ error: true, text: body.error || '복사하지 못했습니다.' }); return }
+      await load()
+      // 복사한 것을 바로 열어 준다. 복사는 대개 고치려고 하는 일이다.
+      setOpenId(body.id)
+      setDraft({ name: body.name, ...parseTable(body.data) })
+      setMessage({ text: `'${trimmed}' 로 복사했습니다.` })
+    } catch {
+      setMessage({ error: true, text: '서버 통신 실패' })
+    }
+  }
+
   const save = async (tpl) => {
     if (!draft.name.trim()) { setMessage({ error: true, text: '표 이름을 입력해주세요.' }); return }
     const users = usage[tpl.id] || []
@@ -355,6 +397,7 @@ function TableDefinitionTab() {
                     {users.length}
                   </UsageBadge>
                   <IconBtn>{isOpen ? '닫기' : '편집'}</IconBtn>
+                  <IconBtn onClick={(e) => duplicate(e, tpl)} title="이 표를 복사해 새로 만듭니다">복사</IconBtn>
                   <IconBtn $danger onClick={(e) => remove(e, tpl)}>삭제</IconBtn>
                 </CardHead>
 
