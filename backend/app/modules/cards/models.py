@@ -83,6 +83,22 @@ class Card(db.Model):
     mounts = db.relationship('CardMount', cascade='all, delete-orphan',
                              backref='card', lazy='selectin')
 
+    #: 지운 시각. **지웠다고 바로 없애지 않는다.**
+    #:
+    #: 카드 하나에 변수·컨테이너·이미지·변경 이력이 딸려 있고, 그 카드로 계산한
+    #: 기록도 남아 있다. 잘못 눌러 사라지면 되돌릴 방법이 없다 — 실수는 대개
+    #: 지운 다음 날 발견된다.
+    #:
+    #: 게시(`card_mounts`)는 **지우지 않고 그대로 둔다.** 되살릴 때 어느 조직에
+    #: 걸려 있었는지가 남아 있어야 원래 자리로 돌아간다. 목록에 안 나오는 것은
+    #: 여기 값이 있는 카드를 걸러 내기 때문이지 게시가 없어서가 아니다.
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    deleted_by_id = db.Column(db.Integer,
+                              db.ForeignKey('users.id', ondelete='SET NULL'),
+                              nullable=True)
+    deleted_by = db.relationship('User', foreign_keys=[deleted_by_id])
+
     containers = db.relationship('Container', backref='card', cascade='all, delete-orphan', order_by='Container.sort_order')
     variables = db.relationship('Variable', backref='card', cascade='all, delete-orphan', order_by='Variable.sort_order')
     images = db.relationship('Image', backref='card', cascade='all, delete-orphan', order_by='Image.sort_order')
@@ -118,6 +134,9 @@ class Card(db.Model):
             'mounted_orgs': [{'slug': m.org_slug,
                               'name': m.org.name if m.org else m.org_slug}
                              for m in self.mounts],
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+            'deleted_by_name': (self.deleted_by.display_name
+                                if self.deleted_by else None),
         }
 
     @property
@@ -136,14 +155,35 @@ class Card(db.Model):
             return False
         return self.ai_touched_at > self.published_at
 
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
+
     def is_visible_to(self, user):
         """게시된 카드는 모두에게, 초안은 만든 사람과 관리자에게만.
 
         초안을 모두에게 보이면 검토를 거치게 한 의미가 없다 — 누군가는 그것을
         열어 계산하고 그 숫자를 믿는다.
+
+        **지운 카드는 휴지통을 쓸 수 있는 사람에게만 보인다.** 여기서 함께
+        판정하는 것이 중요하다 — 카드 하위 자원이 열 몇 개라, 삭제 확인을
+        라우트마다 따로 적으면 언젠가 한 줄을 빠뜨리고 지운 카드의 변수가
+        그대로 열린다. 아무 오류도 나지 않는 종류의 구멍이다.
         """
+        if self.is_deleted:
+            return self.can_manage_trash(user)
         if not self.is_draft:
             return True
+        if user is None:
+            return False
+        return user.is_admin or self.created_by_id == user.id
+
+    def can_manage_trash(self, user):
+        """휴지통에서 되살리거나 완전히 지울 수 있는 사람.
+
+        만든 사람과 관리자다. 게시했던 카드라도 남이 남의 휴지통을 비우게 두지
+        않는다 — 완전 삭제는 되돌릴 수 없다.
+        """
         if user is None:
             return False
         return user.is_admin or self.created_by_id == user.id

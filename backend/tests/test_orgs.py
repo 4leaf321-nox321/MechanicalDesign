@@ -293,8 +293,11 @@ def test_same_name_orgs_get_distinct_slugs(app, client):
     assert a['slug'] != b['slug']
 
 
-def test_deleting_a_card_removes_its_mounts(app, client):
-    """게시가 남으면 조직 목록이 없는 카드를 가리킨다."""
+def test_soft_delete_keeps_mounts_and_purge_removes_them(app, client):
+    """휴지통에 있는 동안 게시는 남는다 — 되살릴 때 원래 조직으로 돌아가야 한다.
+
+    완전 삭제에서는 없어진다. 남으면 조직 목록이 없는 카드를 가리킨다.
+    """
     uid = _user(app, 'kim@x.com')
     head = _login(client, 'kim@x.com')
     team = _org(app, '설계1팀')
@@ -302,6 +305,10 @@ def test_deleting_a_card_removes_its_mounts(app, client):
     client.post(f'/api/cards/{card_id}/mounts', json={'org_slug': team}, headers=head)
 
     client.delete(f'/api/cards/{card_id}', headers=head)
+    with app.app_context():
+        assert CardMount.query.filter_by(org_slug=team).count() == 1
+
+    client.delete(f'/api/cards/{card_id}/permanent', headers=head)
     with app.app_context():
         assert CardMount.query.filter_by(org_slug=team).count() == 0
 

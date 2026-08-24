@@ -132,7 +132,10 @@ def test_the_record_survives_the_card(app, client):
     headers = _login(client)
     record_id = _save(client, headers, card_id, ids).get_json()['id']
 
+    # 휴지통을 거쳐야 실제로 사라진다.
     assert client.delete(f'/api/cards/{card_id}', headers=headers).status_code == 200
+    assert client.delete(f'/api/cards/{card_id}/permanent',
+                         headers=headers).status_code == 200
 
     body = client.get(f'/api/records/{record_id}', headers=headers).get_json()
     assert body['card_exists'] is False

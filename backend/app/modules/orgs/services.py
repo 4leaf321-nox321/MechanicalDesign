@@ -93,8 +93,18 @@ def org_tree(include_counts=True):
 
     counts = {}
     if include_counts:
-        for slug, n in (db.session.query(CardMount.org_slug, db.func.count(CardMount.card_id))
-                        .group_by(CardMount.org_slug).all()):
+        # **지운 카드는 세지 않는다.** 게시(card_mounts)는 되살릴 때를 위해
+        # 그대로 두므로, 카드를 함께 보지 않으면 휴지통에 있는 카드가 조직
+        # 옆 숫자에 계속 잡힌다 — 눌러 보면 목록은 비어 있다.
+        from app.modules.cards.models import Card
+
+        # 위의 `rows`(조직 목록)를 가리지 않도록 이름을 따로 쓴다.
+        count_rows = (db.session.query(CardMount.org_slug,
+                                       db.func.count(CardMount.card_id))
+                      .join(Card, Card.id == CardMount.card_id)
+                      .filter(Card.deleted_at.is_(None))
+                      .group_by(CardMount.org_slug).all())
+        for slug, n in count_rows:
             counts[slug] = n
 
     nodes = {r.slug: {**r.to_dict(card_count=counts.get(r.slug, 0)), 'children': []}

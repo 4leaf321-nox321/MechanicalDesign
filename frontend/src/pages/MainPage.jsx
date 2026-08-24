@@ -5,6 +5,10 @@ import { apiFetch } from '../shared/api/client'
 import { useAuth } from '../shared/auth/AuthContext'
 import OrgTree from '../shared/components/OrgTree'
 import PublishToOrgDialog from '../shared/components/PublishToOrgDialog'
+import { OrgDeleteModal, OrgFormModal } from '../shared/components/OrgModals'
+
+/** 휴지통은 조직이 아니지만 트리에서 한 자리를 차지한다. slug 와 겹치지 않는 값. */
+const TRASH = '__trash__'
 
 
 // ============================================
@@ -142,6 +146,42 @@ const OrgChip = styled.span`
   border-radius: 999px;
   background: #eef2ff;
   color: #4f5d8f;
+`
+
+const TrashActions = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+`
+
+const RestoreBtn = styled.button`
+  padding: 7px 14px;
+  border: 1px solid #d5dae2;
+  border-radius: 6px;
+  background: white;
+  color: #4b5563;
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #3498db;
+    color: #3498db;
+  }
+`
+
+const PurgeBtn = styled(RestoreBtn)`
+  color: #c0392b;
+
+  &:hover {
+    border-color: #c0392b;
+    color: #c0392b;
+  }
+`
+
+const DeletedNote = styled.div`
+  margin-top: 10px;
+  font-size: 0.73rem;
+  color: #98a2b3;
 `
 
 const MountBtn = styled.button`
@@ -487,6 +527,7 @@ function MainPage() {
   const [personal, setPersonal] = useState(null)
   const [selected, setSelected] = useState('')
   const [mountTarget, setMountTarget] = useState(null)
+  const [trashCount, setTrashCount] = useState(0)
 
   useEffect(() => {
     fetchTree()
@@ -507,11 +548,27 @@ function MainPage() {
     } catch (err) {
       console.error('Failed to fetch org tree:', err)
     }
+    // 휴지통 개수는 조직 트리에 없다 — 조직이 아니기 때문이다. 옆에서 따로
+    // 세어 트리와 같은 시점에 갱신한다.
+    try {
+      const res = await apiFetch('/cards/trash')
+      const rows = await res.json()
+      setTrashCount(Array.isArray(rows) ? rows.length : 0)
+    } catch {
+      setTrashCount(0)
+    }
   }
 
   const fetchCards = async (org) => {
     try {
-      const res = await apiFetch(org ? `/cards?org=${encodeURIComponent(org)}` : '/cards')
+      // 휴지통은 **다른 엔드포인트**다. 평소 목록에 조건부로 섞으면, 거르는
+      // 조건을 한 군데서 빠뜨리는 순간 지운 카드가 되살아난 것처럼 보인다.
+      const path = org === TRASH
+        ? '/cards/trash'
+        : org
+          ? `/cards?org=${encodeURIComponent(org)}`
+          : '/cards'
+      const res = await apiFetch(path)
       const data = await res.json()
       setCards(Array.isArray(data) ? data : [])
     } catch (err) {
@@ -689,17 +746,48 @@ function MainPage() {
     }
   }
 
+  /** 휴지통으로 보낸다. 아직 지워지지 않으므로 무겁게 묻지 않는다. */
   const handleDeleteCard = async (e, cardId) => {
     e.stopPropagation()
-    if (!window.confirm('이 카드를 삭제하시겠습니까?')) return
+    const ask = '이 카드를 휴지통으로 옮기시겠습니까?' + '\n\n' +
+      '휴지통에서 되살릴 수 있습니다.'
+    if (!window.confirm(ask)) return
     try {
       const res = await apiFetch(`/cards/${cardId}`, { method: 'DELETE' })
-      if (res.ok) {
-        setCards(prev => prev.filter(c => c.id !== cardId))
-      }
+      if (res.ok) refresh()
     } catch (err) {
       console.error('Failed to delete card:', err)
     }
+  }
+
+  const handleRestoreCard = async (e, card) => {
+    e.stopPropagation()
+    const res = await apiFetch(`/cards/${card.id}/restore`, { method: 'POST' })
+    if (!res.ok) {
+      setOrgError(await errorFrom(res))
+      return
+    }
+    refresh()
+  }
+
+  /**
+   * 완전 삭제 — 되돌릴 수 없다.
+   *
+   * 여기서만 무겁게 묻는다. 무엇이 함께 사라지는지 이름을 대 준다 — "정말
+   * 삭제할까요" 는 무엇을 잃는지 말해 주지 않아서, 사람은 읽지 않고 누른다.
+   */
+  const handlePurgeCard = async (e, card) => {
+    e.stopPropagation()
+    const ask = `'${card.name}' 를 완전히 삭제합니다.` + '\n\n' +
+      '변수·컨테이너·이미지·변경 이력이 함께 사라지고 되돌릴 수 없습니다.' + '\n' +
+      '이 카드로 계산한 기록은 남지만, 카드와의 연결은 끊어집니다.'
+    if (!window.confirm(ask)) return
+    const res = await apiFetch(`/cards/${card.id}/permanent`, { method: 'DELETE' })
+    if (!res.ok) {
+      setOrgError(await errorFrom(res))
+      return
+    }
+    refresh()
   }
 
   const openModal = () => {
@@ -710,10 +798,12 @@ function MainPage() {
   }
 
   const isPersonalView = !!personal && selected === personal.slug
+  const isTrashView = selected === TRASH
 
   /** 지금 보고 있는 자리의 이름. 트리를 평탄화해 찾는다. */
   const selectedLabel = (() => {
     if (!selected) return '전체'
+    if (isTrashView) return '지운 카드'
     if (isPersonalView) return '내 카드'
     const walk = (nodes) => {
       for (const n of nodes) {
@@ -768,12 +858,15 @@ function MainPage() {
           onRename={openRenameOrg}
           onDelete={openDeleteOrg}
           onMove={handleMoveOrg}
+          trashSlug={TRASH}
+          trashCount={trashCount}
         />
 
         <Main>
           <Crumb>
             <b>{selectedLabel}</b>
             {isPersonalView && ' — 아직 어디에도 올리지 않은 카드가 여기 있습니다'}
+            {isTrashView && ' — 되살리거나, 여기서 지워야 완전히 사라집니다'}
           </Crumb>
 
           {/* 드래그 실패를 조용히 넘기지 않는다. 트리는 서버 상태로 되돌아가
@@ -800,9 +893,11 @@ function MainPage() {
               $draft={isDraft}
               onClick={() => navigate(card.route)}
             >
-              <DeleteBtn className="delete-btn" onClick={(e) => handleDeleteCard(e, card.id)}>
-                ✕
-              </DeleteBtn>
+              {!isTrashView && (
+                <DeleteBtn className="delete-btn" onClick={(e) => handleDeleteCard(e, card.id)}>
+                  ✕
+                </DeleteBtn>
+              )}
               {(isDraft || byAi || staleReview) && (
                 <TagRow>
                   {isDraft && <DraftTag>초안 · 나만 보임</DraftTag>}
@@ -816,6 +911,12 @@ function MainPage() {
               )}
               <CardName>{card.name}</CardName>
               <CardDesc>{card.description}</CardDesc>
+              {isTrashView && card.deleted_at && (
+                <DeletedNote>
+                  {new Date(card.deleted_at).toLocaleString('ko-KR')}
+                  {card.deleted_by_name ? ` · ${card.deleted_by_name}` : ''} 삭제
+                </DeletedNote>
+              )}
               {/* 어디에 걸려 있는지 카드 위에서 바로 보인다. 대화상자를 열어야만
                   알 수 있으면, 내려야 할 카드가 걸린 채로 남는다. */}
               {card.mounted_orgs?.length > 0 && (
@@ -825,7 +926,12 @@ function MainPage() {
                   ))}
                 </OrgChips>
               )}
-              {isDraft ? (
+              {isTrashView ? (
+                <TrashActions>
+                  <RestoreBtn onClick={(e) => handleRestoreCard(e, card)}>되살리기</RestoreBtn>
+                  <PurgeBtn onClick={(e) => handlePurgeCard(e, card)}>완전 삭제</PurgeBtn>
+                </TrashActions>
+              ) : isDraft ? (
                 <PublishBtn onClick={(e) => handlePublish(e, card)}>게시하기</PublishBtn>
               ) : (
                 canPlace(card) && (
@@ -843,15 +949,19 @@ function MainPage() {
           )
         })}
 
-        <AddCard onClick={openModal}>
-          <AddIcon>+</AddIcon>
-          <AddText>카드 추가</AddText>
-        </AddCard>
+        {!isTrashView && (
+          <AddCard onClick={openModal}>
+            <AddIcon>+</AddIcon>
+            <AddText>카드 추가</AddText>
+          </AddCard>
+        )}
           </CardGrid>
 
           {cards.length === 0 && (
             <EmptyNote>
-              {isPersonalView
+              {isTrashView
+                ? '휴지통이 비어 있습니다.'
+                : isPersonalView
                 ? '내 카드가 없습니다. 오른쪽 위 “카드 추가”로 만들면 여기에 놓입니다.'
                 : selected
                   ? '이 조직에 게시된 카드가 없습니다. 카드를 만든 사람이 “조직에 게시”로 올릴 수 있습니다.'

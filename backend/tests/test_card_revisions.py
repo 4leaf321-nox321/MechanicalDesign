@@ -416,12 +416,18 @@ def test_history_is_scoped_to_the_card(app, client):
 
 
 def test_deleting_a_card_takes_its_history(app, client):
+    """**완전 삭제**에서만 사라진다. 휴지통에 있는 동안은 이력도 함께 기다린다 —
+    되살렸을 때 이력이 비어 있으면 되살린 것이 아니다."""
     _user(app)
     headers = _login(client)
     card_id = _card(client, headers)
     _add(client, headers, card_id)
 
     client.delete(f'/api/cards/{card_id}', headers=headers)
+    with app.app_context():
+        assert CardRevision.query.filter_by(card_id=card_id).count() > 0
+
+    client.delete(f'/api/cards/{card_id}/permanent', headers=headers)
     with app.app_context():
         assert CardRevision.query.filter_by(card_id=card_id).count() == 0
 

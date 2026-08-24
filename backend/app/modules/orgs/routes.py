@@ -27,8 +27,13 @@ def get_tree():
     """
     me = g.current_user
     personal = services.ensure_personal_org(me, commit=True)
-    personal_count = (db.session.query(db.func.count(CardMount.card_id))
-                      .filter(CardMount.org_slug == personal.slug).scalar())
+    # 개인 공간은 **게시가 아니라 집**으로 센다. 카드가 개인 공간에 mount 되는
+    # 일은 없으므로, 게시 수를 세면 언제나 0 이 나온다.
+    from app.modules.cards.models import Card
+
+    personal_count = (db.session.query(db.func.count(Card.id))
+                      .filter(Card.home_org_slug == personal.slug,
+                              Card.deleted_at.is_(None)).scalar())
     return jsonify({
         'tree': services.org_tree(),
         'personal': personal.to_dict(card_count=personal_count),

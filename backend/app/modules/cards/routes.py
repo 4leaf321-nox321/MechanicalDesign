@@ -295,7 +295,8 @@ def get_cards():
     찾는다(`home_org_slug`) — 아직 아무 데도 안 올린 카드가 거기 있어야 한다.
     """
     actor = current_user()
-    query = Card.query
+    # 지운 카드는 어떤 조회에도 섞이지 않는다. 휴지통은 따로 있다(/cards/trash).
+    query = Card.query.filter(Card.deleted_at.is_(None))
     if not actor.is_admin:
         # 남의 초안은 목록에 아예 넣지 않는다. 화면에서 거르면 응답에는
         # 이미 실려 나간 뒤라, 개발자도구만 열면 그대로 보인다.
@@ -676,10 +677,91 @@ def unmount_card(card_id, org_slug):
 
 @cards_bp.route('/<int:card_id>', methods=['DELETE'])
 def delete_card(card_id):
+    """카드를 휴지통으로 보낸다. **아직 지워지지 않는다.**
+
+    카드 하나에 변수·컨테이너·이미지·변경 이력이 딸려 있고, 그 카드로 계산한
+    기록도 남아 있다. 실수로 눌렀을 때 되돌릴 방법이 없으면 그 손실은 회복되지
+    않는다 — 그리고 실수는 대개 지운 다음 날 발견된다.
+
+    게시(`card_mounts`)는 **그대로 둔다.** 되살릴 때 원래 걸려 있던 조직으로
+    돌아가야 한다. 목록에서 사라지는 것은 지운 카드를 걸러 내기 때문이다.
+    """
     card = Card.query.get_or_404(card_id)
+    actor = current_user()
+
+    if not card.can_manage_trash(actor):
+        raise AppError('MD-CARDS-0120',
+                       '이 카드를 만든 사람이나 관리자만 지울 수 있습니다.', status=403)
+
+    if card.is_deleted:
+        return jsonify({'message': '이미 휴지통에 있습니다.'}), 200
+
+    card.deleted_at = datetime.utcnow()
+    card.deleted_by_id = actor.id
+    db.session.commit()
+    return jsonify({'card': card.to_dict(),
+                    'message': '휴지통으로 옮겼습니다.'}), 200
+
+
+@cards_bp.route('/trash', methods=['GET'])
+def list_trash():
+    """휴지통 — 내가 지운 카드. 관리자는 모두의 것을 본다.
+
+    **`/cards` 목록과 섞지 않는다.** 지운 카드가 평소 목록에 조건부로 섞이면,
+    거르는 조건을 한 군데서 빠뜨리는 순간 지운 카드가 조용히 되살아난 것처럼
+    보인다.
+    """
+    actor = current_user()
+    query = Card.query.filter(Card.deleted_at.isnot(None))
+    if not actor.is_admin:
+        query = query.filter(Card.created_by_id == actor.id)
+    # 최근에 지운 것이 위로. 되살리려는 카드는 대개 방금 지운 것이다.
+    cards = query.order_by(Card.deleted_at.desc()).all()
+    return jsonify([c.to_dict() for c in cards])
+
+
+@cards_bp.route('/<int:card_id>/restore', methods=['POST'])
+def restore_card(card_id):
+    """휴지통에서 꺼낸다. 게시가 남아 있으므로 원래 조직으로 함께 돌아간다."""
+    card = Card.query.get_or_404(card_id)
+    actor = current_user()
+
+    if not card.can_manage_trash(actor):
+        raise AppError('MD-CARDS-0120',
+                       '이 카드를 만든 사람이나 관리자만 되살릴 수 있습니다.', status=403)
+    if not card.is_deleted:
+        raise AppError('MD-CARDS-0121', '휴지통에 있는 카드가 아닙니다.', status=409)
+
+    card.deleted_at = None
+    card.deleted_by_id = None
+    db.session.commit()
+    return jsonify({'card': card.to_dict(), 'message': '되살렸습니다.'}), 200
+
+
+@cards_bp.route('/<int:card_id>/permanent', methods=['DELETE'])
+def purge_card(card_id):
+    """완전 삭제 — **여기서만 실제로 지운다.**
+
+    휴지통을 거치지 않고 지우는 길을 두지 않는다. 두 번 묻는 것이 목적인데,
+    한쪽에 우회로가 있으면 그 목적이 사라진다.
+
+    변수·컨테이너·이미지·변경 이력·게시가 함께 사라진다. 계산 기록은 남지만
+    카드를 가리키던 연결이 끊긴다 — 기록은 그때의 값과 정의를 자기 안에 스냅숏
+    으로 들고 있어서 그것만으로도 열어 볼 수 있다.
+    """
+    card = Card.query.get_or_404(card_id)
+    actor = current_user()
+
+    if not card.can_manage_trash(actor):
+        raise AppError('MD-CARDS-0120',
+                       '이 카드를 만든 사람이나 관리자만 지울 수 있습니다.', status=403)
+    if not card.is_deleted:
+        raise AppError('MD-CARDS-0122',
+                       '먼저 휴지통으로 옮긴 뒤에 완전 삭제할 수 있습니다.', status=409)
+
     db.session.delete(card)
     db.session.commit()
-    return jsonify({'message': '삭제되었습니다.'}), 200
+    return jsonify({'message': '완전히 삭제되었습니다.'}), 200
 
 
 # ========================

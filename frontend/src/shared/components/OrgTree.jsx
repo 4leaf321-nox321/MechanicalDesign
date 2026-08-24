@@ -329,7 +329,7 @@ function collectSubtree(nodes, slug, found = false, out = new Set()) {
 
 function OrgTree({
   tree, personal, selected, onSelect, isAdmin,
-  onAdd, onRename, onDelete, onMove,
+  onAdd, onRename, onDelete, onMove, trashSlug, trashCount,
 }) {
   const [dragging, setDragging] = useState(null)
   const [over, setOver] = useState(null)
@@ -408,6 +408,23 @@ function OrgTree({
           onDelete={onDelete}
         />
       ))}
+
+      {trashSlug && (
+        <>
+          <SectionLabel>휴지통</SectionLabel>
+          <Row
+            $depth={0}
+            $active={selected === trashSlug}
+            $color="#b0b6c0"
+            onClick={() => onSelect(trashSlug)}
+            title="지운 카드는 여기 있습니다. 되살리거나 완전히 지울 수 있습니다"
+          >
+            <Caret $has={false} />
+            <Label>지운 카드</Label>
+            {trashCount > 0 && <Count>{trashCount}</Count>}
+          </Row>
+        </>
+      )}
 
       {dnd?.dragging && (
         <DragHint>
