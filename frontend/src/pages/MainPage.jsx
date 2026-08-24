@@ -148,6 +148,38 @@ const OrgChip = styled.span`
   color: #4f5d8f;
 `
 
+/** 카드 오른쪽 위. 삭제(✕)와 같은 줄에 두면 잘못 누르기 쉬워 왼쪽에 둔다. */
+const CopyBtn = styled.button`
+  position: absolute;
+  top: 12px;
+  right: 40px;
+  border: none;
+  background: none;
+  color: #b8bec8;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+
+  &:hover {
+    background: #eef2ff;
+    color: #3498db;
+  }
+`
+
+const NoticeBar = styled.div`
+  margin: 14px 48px 0;
+  padding: 10px 14px;
+  background: #eef6fd;
+  border: 1px solid #cfe4f7;
+  border-radius: 6px;
+  color: #35618a;
+  font-size: 0.84rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`
+
 const TrashActions = styled.div`
   display: flex;
   gap: 8px;
@@ -528,6 +560,8 @@ function MainPage() {
   const [selected, setSelected] = useState('')
   const [mountTarget, setMountTarget] = useState(null)
   const [trashCount, setTrashCount] = useState(0)
+  // 성공 알림. 오류(orgError)와 자리를 나눠 쓰면 성공이 붉게 보인다.
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     fetchTree()
@@ -760,6 +794,28 @@ function MainPage() {
     }
   }
 
+  /**
+   * 카드를 통째로 복제한다. 사본은 **내 개인 공간에 초안으로** 놓인다.
+   *
+   * 복제한 뒤 그 자리로 옮겨 준다. 목록에 남으면 방금 만든 사본이 어디 갔는지
+   * 찾게 되는데, 지금 보고 있는 것이 조직 화면이면 사본은 거기 없다 — 아직
+   * 아무 데도 게시되지 않았기 때문이다.
+   */
+  const handleDuplicateCard = async (e, card) => {
+    e.stopPropagation()
+    const res = await apiFetch(`/cards/${card.id}/duplicate`, { method: 'POST' })
+    if (!res.ok) {
+      setOrgError(await errorFrom(res))
+      return
+    }
+    const body = await res.json()
+    await fetchTree()
+    if (personal) setSelected(personal.slug)
+    else fetchCards(selected)
+    setOrgError('')
+    setNotice(`${body.message} 내 카드에서 확인하세요.`)
+  }
+
   const handleRestoreCard = async (e, card) => {
     e.stopPropagation()
     const res = await apiFetch(`/cards/${card.id}/restore`, { method: 'POST' })
@@ -872,6 +928,13 @@ function MainPage() {
           {/* 드래그 실패를 조용히 넘기지 않는다. 트리는 서버 상태로 되돌아가
               제자리로 튕겨 보이는데, 왜 안 됐는지 말해 주지 않으면 사람은
               같은 동작을 몇 번 더 시도한다. */}
+          {notice && (
+            <NoticeBar>
+              {notice}
+              <CloseX onClick={() => setNotice('')}>✕</CloseX>
+            </NoticeBar>
+          )}
+
           {orgError && (
             <OrgErrorBar>
               {orgError}
@@ -925,6 +988,12 @@ function MainPage() {
                     <OrgChip key={o.slug}>{o.name}</OrgChip>
                   ))}
                 </OrgChips>
+              )}
+              {!isTrashView && (
+                <CopyBtn onClick={(e) => handleDuplicateCard(e, card)}
+                         title="이 카드를 통째로 복사해 내 공간에 초안으로 만듭니다">
+                  복제
+                </CopyBtn>
               )}
               {isTrashView ? (
                 <TrashActions>

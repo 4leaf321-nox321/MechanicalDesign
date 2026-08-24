@@ -11,7 +11,7 @@ from app.shared.auth import current_user
 from app.shared.errors import AppError
 from app.modules.orgs import services as org_services
 from app.modules.orgs.models import CardMount, Organization
-from . import expressions, revisions, tables, validation
+from . import duplication, expressions, revisions, tables, validation
 from .models import (Card, CardRevision, Container, Variable, Image,
                      VariableTemplate, WidgetPlacement)
 
@@ -622,6 +622,34 @@ def _assert_can_place(card):
                        '이 카드를 만든 사람이나 관리자만 조직에 게시할 수 있습니다.',
                        status=403)
     return actor
+
+
+@cards_bp.route('/<int:card_id>/duplicate', methods=['POST'])
+def duplicate_card(card_id):
+    """카드를 통째로 복제한다. 사본은 **내 개인 공간에 초안으로** 놓인다.
+
+    볼 수 있는 카드면 누구나 복제할 수 있다. 사본은 복제한 사람의 것이 되고
+    원본은 아무것도 바뀌지 않으므로, 남의 카드를 가져다 자기 조건으로 고쳐
+    쓰는 것이 이 기능의 목적이다.
+
+    게시·변경 이력·계산 기록은 따라오지 않는다. 그것들은 "이 카드가 검토를
+    거쳤다" 는 흔적인데, 사본은 아직 아무도 보지 않았다.
+    """
+    source = Card.query.get_or_404(card_id)
+    actor = current_user()
+
+    if source.is_deleted:
+        raise AppError('MD-CARDS-0130',
+                       '휴지통에 있는 카드는 복제할 수 없습니다. 먼저 되살려 주세요.',
+                       status=409)
+
+    home = org_services.ensure_personal_org(actor)
+    copy = duplication.duplicate_card(
+        source, actor, home.slug, _make_route, UPLOAD_ROOT,
+        via_token=_acting_via_token(),
+    )
+    return jsonify({'card': copy.to_dict(),
+                    'message': f"'{copy.name}' 로 복제했습니다."}), 201
 
 
 @cards_bp.route('/<int:card_id>/mounts', methods=['POST'])
