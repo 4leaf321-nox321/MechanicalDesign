@@ -1,0 +1,246 @@
+"""워크플로 — 카드를 이어 붙여 값이 흐르게 한다.
+
+카드 하나는 섬이다. 하중을 구한 뒤 그 값을 볼트 카드에 **손으로 옮겨 적어야**
+하고, 옮겨 적는 순간 두 계산이 어긋나기 시작한다. 워크플로는 그 배선을 표로
+들고 있어서, 앞 카드를 다시 계산하면 뒤 카드가 따라 바뀐다.
+
+    워크플로 (workflow)      감속기 출력축 검토
+     ├─ 노드 (node)          카드가 놓이는 **자리**. 카드 참조 + 그 자리의 입력값
+     └─ 연결 (link)          노드A.출력변수 → 노드B.입력변수
+
+**노드가 카드 참조가 아니라 자리인 이유**: 같은 '볼트 강도' 카드를 한 워크플로
+안에서 두 번 쓰는 일이 흔하다(상부 볼트, 하부 볼트). 카드를 직접 가리키면 그 둘의
+입력값을 둘 데가 없다.
+
+**카드는 살아 있는 참조다.** 카드를 고치면 워크플로에 그대로 반영된다 — 조직
+게시와 같은 판단이다. 대신 카드에서 변수를 지우면 그 변수를 쓰던 연결이 끊기므로,
+**검증이 1급 기능**이 된다. 끊긴 채로 조용히 도는 것이 이 구조에서 가장 나쁜
+실패이기 때문에, 연결은 끊겨도 **행이 남아** 무엇을 가리키던 것인지 말해 준다.
+"""
+
+import json
+from datetime import datetime
+
+from app.extensions import db
+
+
+class Workflow(db.Model):
+    __tablename__ = 'workflows'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, default='')
+    route = db.Column(db.String(200), nullable=False, unique=True)
+    color = db.Column(db.String(7), default='#6c5ce7')
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
+                              nullable=True)
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+
+    #: 태어난 개인 공간. 카드와 같은 규칙이다.
+    home_org_slug = db.Column(db.String(64),
+                              db.ForeignKey('organizations.slug', ondelete='SET NULL'),
+                              nullable=True, index=True)
+    home_org = db.relationship('Organization', foreign_keys=[home_org_slug])
+
+    #: 'draft' | 'published'. 카드와 같은 뜻 — 사람이 이 계산을 봤는가.
+    status = db.Column(db.String(20), nullable=False, default='draft',
+                       server_default='draft')
+    published_at = db.Column(db.DateTime, nullable=True)
+    published_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
+                                nullable=True)
+    published_by = db.relationship('User', foreign_keys=[published_by_id])
+
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    deleted_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
+                              nullable=True)
+    deleted_by = db.relationship('User', foreign_keys=[deleted_by_id])
+
+    nodes = db.relationship('WorkflowNode', cascade='all, delete-orphan',
+                            back_populates='workflow', lazy='selectin',
+                            order_by='WorkflowNode.sort_order')
+    links = db.relationship('WorkflowLink', cascade='all, delete-orphan',
+                            back_populates='workflow', lazy='selectin')
+    mounts = db.relationship('WorkflowMount', cascade='all, delete-orphan',
+                             backref='workflow', lazy='selectin')
+
+    @property
+    def is_draft(self):
+        return (self.status or 'draft') == 'draft'
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
+
+    def is_visible_to(self, user):
+        """카드와 **같은 규칙**이다.
+
+        규칙을 따로 쓰지 않는 것이 중요하다. 두 벌이 되면 한쪽만 고치는 날이
+        오고, 그때 새는 쪽은 아무 오류도 내지 않는다.
+        """
+        if self.is_deleted:
+            return self.can_manage_trash(user)
+        if not self.is_draft:
+            return True
+        if user is None:
+            return False
+        return user.is_admin or self.created_by_id == user.id
+
+    def can_manage_trash(self, user):
+        if user is None:
+            return False
+        return user.is_admin or self.created_by_id == user.id
+
+    def to_dict(self, full=False):
+        body = {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description or '',
+            'route': self.route,
+            'color': self.color,
+            'sort_order': self.sort_order,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by_id': self.created_by_id,
+            'created_by_name': self.created_by.display_name if self.created_by else None,
+            'status': self.status or 'draft',
+            'published_at': self.published_at.isoformat() if self.published_at else None,
+            'home_org_slug': self.home_org_slug,
+            'mounted_orgs': [{'slug': m.org_slug,
+                              'name': m.org.name if m.org else m.org_slug}
+                             for m in self.mounts],
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+            'deleted_by_name': (self.deleted_by.display_name
+                                if self.deleted_by else None),
+            'node_count': len(self.nodes),
+            'link_count': len(self.links),
+        }
+        if full:
+            body['nodes'] = [n.to_dict() for n in self.nodes]
+            body['links'] = [l.to_dict() for l in self.links]
+        return body
+
+
+class WorkflowMount(db.Model):
+    """조직 게시. `card_mounts` 와 같은 꼴이라 화면도 같은 것을 쓴다."""
+
+    __tablename__ = 'workflow_mounts'
+
+    workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id', ondelete='CASCADE'),
+                            primary_key=True)
+    org_slug = db.Column(db.String(64),
+                         db.ForeignKey('organizations.slug', ondelete='CASCADE'),
+                         primary_key=True, index=True)
+    mounted_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
+                              nullable=True)
+    mounted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    org = db.relationship('Organization')
+
+
+class WorkflowNode(db.Model):
+    """카드가 놓이는 한 자리."""
+
+    __tablename__ = 'workflow_nodes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id', ondelete='CASCADE'),
+                            nullable=False, index=True)
+    workflow = db.relationship('Workflow', back_populates='nodes')
+
+    #: **완전 삭제를 막는다(RESTRICT).** 카드가 사라지면 이 자리가 통째로 뜻을
+    #: 잃는데, CASCADE 로 지워 버리면 워크플로가 조용히 반쪽이 된다. 앱이 먼저
+    #: 친절한 메시지로 막고, 이 제약은 그 뒤의 마지막 방어선이다.
+    card_id = db.Column(db.Integer, db.ForeignKey('cards.id', ondelete='RESTRICT'),
+                        nullable=False, index=True)
+    card = db.relationship('Card')
+
+    #: 이 자리의 이름. '상부 볼트' 처럼 같은 카드를 두 번 쓸 때 구분한다.
+    alias = db.Column(db.String(100), nullable=False, default='')
+
+    #: 순서도 GUI 의 좌표. 지금은 표로 편집하지만 자리를 미리 만들어 둔다 —
+    #: 나중에 캔버스를 얹을 때 **데이터 모델을 안 바꾸려는** 것이다.
+    layout_x = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    layout_y = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+
+    #: 이 자리의 입력값 `{변수id: 값}`. 워크플로가 곧 하나의 설계안이 되도록
+    #: 저장한다 — 열면 지난번 값이 그대로 있어 바로 다시 돌릴 수 있다.
+    inputs = db.Column(db.Text, nullable=False, default='{}', server_default='{}')
+
+    sort_order = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def input_values(self):
+        try:
+            value = json.loads(self.inputs or '{}')
+            return value if isinstance(value, dict) else {}
+        except ValueError:
+            # 저장된 JSON 이 깨졌다면 그 노드만 빈 입력으로 볼 일이지, 워크플로
+            # 전체가 500 이 되어서는 안 된다.
+            return {}
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'workflow_id': self.workflow_id,
+            'card_id': self.card_id,
+            'card_name': self.card.name if self.card else None,
+            'card_route': self.card.route if self.card else None,
+            # 카드가 휴지통에 있으면 이 노드는 돌지 않는다. 검증이 읽는다.
+            'card_deleted': bool(self.card and self.card.deleted_at),
+            'alias': self.alias or '',
+            'layout_x': self.layout_x,
+            'layout_y': self.layout_y,
+            'inputs': self.input_values(),
+            'sort_order': self.sort_order,
+        }
+
+
+class WorkflowLink(db.Model):
+    """노드 사이의 배선 — 앞 노드의 결과가 뒤 노드의 입력이 된다.
+
+    **한 입력에는 연결이 하나만.** 둘이 들어오면 어느 값이 이기는지 알 수 없고,
+    그건 오류 없이 틀린 답이 나오는 종류다. DB 제약으로 막는다.
+
+    **변수 id 에 외래키를 걸지 않는다.** 걸면 변수를 지울 때 CASCADE 로 연결이
+    조용히 사라져, 배선이 하나 없어진 채로 워크플로가 계속 돈다. 행을 남겨 두면
+    검증이 "이 연결이 가리키던 변수가 사라졌습니다" 라고 말할 수 있다 — 그러라고
+    이름 사본(`from_label`/`to_label`)도 함께 들고 있는다.
+    """
+
+    __tablename__ = 'workflow_links'
+    __table_args__ = (
+        db.UniqueConstraint('to_node_id', 'to_variable_id',
+                            name='uq_workflow_link_target'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id', ondelete='CASCADE'),
+                            nullable=False, index=True)
+    workflow = db.relationship('Workflow', back_populates='links')
+
+    from_node_id = db.Column(db.Integer,
+                             db.ForeignKey('workflow_nodes.id', ondelete='CASCADE'),
+                             nullable=False, index=True)
+    from_variable_id = db.Column(db.Integer, nullable=False)
+    from_label = db.Column(db.String(160), nullable=False, default='')
+
+    to_node_id = db.Column(db.Integer,
+                           db.ForeignKey('workflow_nodes.id', ondelete='CASCADE'),
+                           nullable=False, index=True)
+    to_variable_id = db.Column(db.Integer, nullable=False)
+    to_label = db.Column(db.String(160), nullable=False, default='')
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'workflow_id': self.workflow_id,
+            'from_node_id': self.from_node_id,
+            'from_variable_id': self.from_variable_id,
+            'from_label': self.from_label or '',
+            'to_node_id': self.to_node_id,
+            'to_variable_id': self.to_variable_id,
+            'to_label': self.to_label or '',
+        }

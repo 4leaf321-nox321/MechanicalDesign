@@ -101,12 +101,18 @@ def create_app(config_class=Config):
     protect_blueprint(orgs_bp)
     app.register_blueprint(orgs_bp, url_prefix='/api/orgs')
 
+    # --- 워크플로 — 카드를 이어 값이 흐르게 한다 ---
+    from .modules.workflows.routes import workflows_bp
+    protect_blueprint(workflows_bp)
+    app.register_blueprint(workflows_bp, url_prefix='/api/workflows')
+
     # Import models for migration detection
     from .modules.cards import models  # noqa: F401
     from .modules.records import models as record_models  # noqa: F401
     from .modules.accounts import models as account_models  # noqa: F401
     from .modules.auth import models as auth_models  # noqa: F401
     from .modules.orgs import models as org_models  # noqa: F401
+    from .modules.workflows import models as workflow_models  # noqa: F401
 
     # Health check — 인증 없이 열어 둔다.
     # 배포 스크립트와 모니터링이 "서버가 떴는가" 를 물어보는 자리다. 여기에

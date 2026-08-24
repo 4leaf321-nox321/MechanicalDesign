@@ -897,6 +897,23 @@ def purge_card(card_id):
         raise AppError('MD-CARDS-0122',
                        '먼저 휴지통으로 옮긴 뒤에 완전 삭제할 수 있습니다.', status=409)
 
+    # **워크플로가 쓰고 있으면 막는다.**
+    #
+    # 카드가 사라지면 그 자리가 통째로 뜻을 잃고, 워크플로는 조용히 반쪽이 된다.
+    # 조직을 지울 때와 같은 판단이다 — 막고, 무엇을 잃는지 이름으로 말해 주고,
+    # 사람이 정하게 한다. (여기서 import 하는 이유: 카드 모듈이 워크플로 모듈에
+    # 묶이지 않게. 방향은 워크플로 → 카드 한쪽이다.)
+    from app.modules.workflows import services as workflow_services
+
+    used_by = workflow_services.workflows_using_card(card.id)
+    if used_by:
+        raise AppError(
+            'MD-CARDS-0123',
+            f'이 카드를 쓰는 워크플로가 있습니다: {", ".join(used_by[:5])}'
+            + (f' 외 {len(used_by) - 5}개' if len(used_by) > 5 else '')
+            + '. 먼저 그 워크플로에서 빼 주세요.',
+            status=409)
+
     db.session.delete(card)
     db.session.commit()
     return jsonify({'message': '완전히 삭제되었습니다.'}), 200
