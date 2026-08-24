@@ -4,15 +4,32 @@ import { apiFetch } from '../../api/client'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
 
 
+/**
+ * 목록을 여러 열로 편다.
+ *
+ * 한 열이면 카드가 모달 너비만큼 늘어나 이름과 배지 오른쪽이 통째로 빈다.
+ * 정작 세로로는 길어져서, 컨테이너가 예닐곱 개만 돼도 아래쪽은 스크롤해야
+ * 보인다. 자동 채움으로 두면 좁을 때는 한 열, 넓을 때는 두세 열이 된다.
+ */
+const ContainerGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  align-items: start;
+`
+
 const ContainerCard = styled.div`
   background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  border: 1px solid ${p => (p.$editing ? '#3498db' : '#e9ecef')};
   border-radius: 8px;
   padding: 14px 16px;
-  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+
+  /* 편집 중인 카드는 **줄 전체**를 쓴다. 이름 칸과 셀렉트 둘, 버튼 둘이
+     한 칸 너비에 들어가면 서로 밀려 이름 칸이 글자 몇 개만 남는다. */
+  ${p => p.$editing && 'grid-column: 1 / -1;'}
 `
 
 const ContainerName = styled.span`
@@ -155,6 +172,53 @@ function ContainerTab({ cardId, containers, onRefresh }) {
     }
   }
 
+  /**
+   * 컨테이너를 복사한다. 이름만 바꿔 **바로 만든다.**
+   *
+   * 변수와 달리 폼을 열어 두지 않는다. 컨테이너에는 겹치면 곤란한 기호가
+   * 없고 이름은 겹쳐도 되므로, 확인받을 것이 없다. 만들고 나면 그 자리에서
+   * 편집 상태로 열어 주니 이름을 고칠 기회도 바로 온다.
+   *
+   * **위젯 배치는 따라오지 않는다.** 컨테이너에 놓인 변수는 배치(placement)
+   * 이지 컨테이너의 속성이 아니다 — 같이 복사하면 같은 변수가 두 자리에
+   * 나타나는데, 그것은 대개 복사한 사람이 원한 결과가 아니다.
+   */
+  const handleDuplicate = async (c) => {
+    setError('')
+    const taken = new Set(containers.map(x => x.name))
+    let name = c.name + ' 사본'
+    let n = 2
+    while (taken.has(name)) { name = c.name + ' 사본 ' + n; n += 1 }
+
+    try {
+      const res = await apiFetch(`/cards/${cardId}/containers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          container_type: c.container_type,
+          column_count: c.column_count || 1,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || '복사 실패')
+        return
+      }
+      const created = await res.json().catch(() => null)
+      onRefresh()
+      // 만든 것을 바로 편집 상태로 연다. 복사는 대개 이름을 고치려고 한다.
+      if (created?.id) {
+        setEditingId(created.id)
+        setEditName(created.name)
+        setEditType(created.container_type || 'default')
+        setEditColumnCount(created.column_count || 1)
+      }
+    } catch {
+      setError('서버 통신 실패')
+    }
+  }
+
   const handleUpdate = async (id) => {
     if (!editName.trim()) return
     try {
@@ -231,8 +295,9 @@ function ContainerTab({ cardId, containers, onRefresh }) {
       {containers.length === 0 ? (
         <EmptyState>정의된 컨테이너가 없습니다.</EmptyState>
       ) : (
-        containers.map((c) => (
-          <ContainerCard key={c.id}>
+        <ContainerGrid>
+        {containers.map((c) => (
+          <ContainerCard key={c.id} $editing={editingId === c.id}>
             {editingId === c.id ? (
               <EditRow>
                 <Input
@@ -264,12 +329,14 @@ function ContainerTab({ cardId, containers, onRefresh }) {
                 </ContainerName>
                 <Actions>
                   <IconBtn onClick={() => startEdit(c)}>편집</IconBtn>
+                  <IconBtn onClick={() => handleDuplicate(c)} title="이 컨테이너를 복사해 새로 만듭니다">복사</IconBtn>
                   <IconBtn $danger onClick={() => handleDelete(c.id)}>삭제</IconBtn>
                 </Actions>
               </>
             )}
           </ContainerCard>
-        ))
+        ))}
+        </ContainerGrid>
       )}
       </TabScroll>
     </TabPane>
