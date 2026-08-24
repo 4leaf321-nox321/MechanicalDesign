@@ -499,9 +499,13 @@ Write-Host ''
 if ($null -ne (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
     Write-Host "  상태 확인:  Get-Service $ServiceName"
 } else {
-    Write-Host '시작:'
+    # 서비스가 없으면 **사람이 다시 켜야 한다.** 배포는 코드를 갈아 끼울 뿐이고,
+    # 콘솔로 돌던 프로세스는 배포 전에 멈춰 세운 그대로다. MCP 도 같이 적는다 —
+    # 백엔드만 다시 켜고 MCP 를 잊으면, 그때부터 AI 도구만 조용히 죽어 있다.
+    Write-Host '다시 켜세요 (콘솔 기동):'
     Write-Host "  cd '$AppPath'"
     Write-Host '  .\run_server.ps1'
+    Write-Host '  .\run_mcp_server.ps1      ← MCP 를 쓰고 있었다면 (다른 창에서)'
 }
 Write-Host ''
 Write-Host "직전 버전은 $prevPath 에 있습니다 (롤백: .\rollback.ps1 -AppPath '$AppPath')"

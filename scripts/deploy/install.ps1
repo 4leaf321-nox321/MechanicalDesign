@@ -241,17 +241,31 @@ if ($existing) {
     }
 }
 
-# --- 9. 서비스 등록 -----------------------------------------------------------
+# --- 9. 서비스 등록 (선택) -----------------------------------------------------
 # 콘솔로 띄우면 창을 닫는 순간 서버가 멈추고 서버를 재부팅하면 아무도 켜 주지
-# 않는다. 기본값은 서비스 등록이다.
+# 않는다. 그래서 기본값은 서비스 등록이다.
+#
+# **실패해도 설치를 멈추지 않는다.** 여기까지 왔으면 앱은 이미 다 깔렸고, 남은
+# 것은 "어떻게 띄우느냐" 뿐이다. 전에는 install-service 가 throw 하면 그 예외가
+# 그대로 올라와 install 전체가 죽었다 — nssm.cc 를 막아 둔 사내망에서는 다 끝난
+# 설치가 실패로 보이고, 사람은 처음부터 다시 하려 든다.
+$serviceReady = $false
 if ($NoService) {
-    Write-Log '-NoService — 서비스 등록을 건너뜁니다.'
+    Write-Log '-NoService — 서비스 등록을 건너뜁니다. 콘솔 기동으로 씁니다.'
 } else {
     Write-Log "서비스 등록: $ServiceName"
-    & (Join-Path $scriptDir 'install-service.ps1') -AppPath $AppPath -ServiceName $ServiceName
-    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
-        Write-Warning "서비스 등록에 실패했습니다. 관리자 PowerShell 에서 다시 실행하세요:"
-        Write-Warning "  .\install-service.ps1 -AppPath '$AppPath'"
+    try {
+        & (Join-Path $scriptDir 'install-service.ps1') -AppPath $AppPath -ServiceName $ServiceName
+        # exit code 가 아니라 **실제로 등록됐는지**를 본다. nssm 이 남긴
+        # $LASTEXITCODE 가 섞여 들어와 성공을 실패로 읽는 일이 없다.
+        if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
+            throw '서비스가 등록되지 않았습니다.'
+        }
+        $serviceReady = $true
+    } catch {
+        Write-Warning "서비스 등록을 건너뜁니다 — $($_.Exception.Message)"
+        Write-Warning '앱 설치 자체는 끝났습니다. 아래 안내대로 콘솔로 띄우면 그대로 씁니다.'
+        Write-Warning "나중에 다시 시도하려면: .\install-service.ps1 -AppPath '$AppPath'"
     }
 }
 
@@ -268,7 +282,19 @@ if ($AdminPassword) {
 } else {
     Write-Host "  관리자      : $AdminEmail  (위에 출력된 비밀번호, 첫 로그인 시 변경 강제)"
 }
-Write-Host "  상태 확인   : Get-Service $ServiceName"
-Write-Host "  서비스 없이 : cd '$AppPath' ; .\run_server.ps1"
+if ($serviceReady) {
+    Write-Host "  상태 확인    : Get-Service $ServiceName"
+    Write-Host "  콘솔로 띄우기: cd '$AppPath' ; .\run_server.ps1   (서비스를 먼저 멈추세요)"
+    Write-Host "  MCP (선택)   : .\install-mcp.ps1 -AppPath '$AppPath'"
+} else {
+    Write-Host ''
+    Write-Host '  ── 서비스가 없습니다. 아래로 띄우세요 (창을 닫으면 멈춥니다) ──'
+    Write-Host "  백엔드       : cd '$AppPath' ; .\run_server.ps1"
+    Write-Host "  MCP (선택)   : cd '$AppPath' ; .\run_mcp_server.ps1 -Setup   ← 처음 한 번"
+    Write-Host '                                 .\run_mcp_server.ps1         ← 그다음부터'
+    Write-Host ''
+    Write-Host '  MCP 를 밖에 열려면 방화벽도 함께 (관리자):'
+    Write-Host "    New-NetFirewallRule -DisplayName 'MechanicalDesignMCP 3010' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3010"
+}
 Write-Host "  운영 데이터 : $dataPath  (백업 대상 — DB와 함께 받아야 복구가 성립한다)"
 Write-Host ''
