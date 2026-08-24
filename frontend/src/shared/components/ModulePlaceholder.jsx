@@ -12,6 +12,7 @@ import { runFactorial, runLhs, combinationCount, expandRange } from '../utils/do
 import { apiFetch } from '../api/client'
 import LoadInputsDialog from './LoadInputsDialog'
 import GoalSeekPanel from './GoalSeekPanel'
+import SensitivityPanel from './SensitivityPanel'
 import { useAuth } from '../auth/AuthContext'
 
 
@@ -637,10 +638,14 @@ function ModulePlaceholder({ onGoHome }) {
           <ModeTab $active={mode === 'single'} onClick={() => setMode('single')}>단일 계산</ModeTab>
           <ModeTab $active={mode === 'doe'} onClick={() => setMode('doe')}>DOE 탐색</ModeTab>
           <ModeTab $active={mode === 'goal'} onClick={() => setMode('goal')}>역계산</ModeTab>
+          <ModeTab $active={mode === 'sens'} onClick={() => setMode('sens')}>민감도</ModeTab>
         </ModeTabs>
 
         {mode === 'single' && renderSingleMode()}
         {mode === 'doe' && renderDoeMode()}
+        {mode === 'sens' && (
+          <SensitivityPanel variables={variables} values={inputValues} />
+        )}
         {mode === 'goal' && (
           <GoalSeekPanel
             variables={variables}
