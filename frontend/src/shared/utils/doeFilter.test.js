@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { applyConditions, isUsable, rangeOf } from './doeFilter'
+import { applyConditions, constantInputs, isUsable, rangeOf } from './doeFilter'
 
 const rows = [
   { t: 10, w: 50, sig: 240, mass: 4 },
@@ -107,5 +107,49 @@ describe('가능한 범위', () => {
 
   it('숫자가 하나도 없으면 null', () => {
     expect(rangeOf([{ sig: null }, { sig: 'x' }], 'sig')).toBe(null)
+  })
+})
+
+describe('고정된 입력 찾기', () => {
+  const keys = ['t', 'w', 'F']
+
+  it('한 번도 안 변한 열만 고른다', () => {
+    const got = constantInputs([
+      { t: 10, w: 50, F: 6000 },
+      { t: 12, w: 50, F: 6000 },
+      { t: 14, w: 50, F: 6000 },
+    ], keys)
+
+    expect(got).toEqual([{ key: 'w', value: 50 }, { key: 'F', value: 6000 }])
+  })
+
+  it('전부 변하면 빈 목록', () => {
+    const got = constantInputs([{ t: 1, w: 1, F: 1 }, { t: 2, w: 2, F: 2 }], keys)
+    expect(got).toEqual([])
+  })
+
+  it('한 줄뿐이면 전부 고정으로 본다 — 실제로 변한 적이 없다', () => {
+    const got = constantInputs([{ t: 10, w: 50, F: 6000 }], keys)
+    expect(got.map(f => f.key)).toEqual(['t', 'w', 'F'])
+  })
+
+  it('숫자와 숫자꼴 문자열은 같은 값으로 본다', () => {
+    // 고정값은 입력 칸에서 문자열로, 격자 값은 숫자로 들어오는 경로가 있다.
+    const got = constantInputs([{ t: 10 }, { t: '10' }], ['t'])
+    expect(got).toEqual([{ key: 't', value: 10 }])
+  })
+
+  it('배열 입력도 내용이 같으면 고정이다', () => {
+    const got = constantInputs([{ L: [1, 2] }, { L: [1, 2] }], ['L'])
+    expect(got).toHaveLength(1)
+  })
+
+  it('비어 있는 값끼리는 같다고 보지 않는다', () => {
+    // null 이 반복되는 열을 '고정 = null' 로 보여 주면 무의미한 칩이 뜬다.
+    expect(constantInputs([{ t: null }, { t: null }], ['t'])).toEqual([])
+  })
+
+  it('행이 없으면 빈 목록', () => {
+    expect(constantInputs([], keys)).toEqual([])
   })
 })

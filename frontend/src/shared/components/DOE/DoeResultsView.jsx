@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import DoeFilterBar from './DoeFilterBar'
-import { applyConditions, rangeOf } from '../../utils/doeFilter'
+import { applyConditions, constantInputs, rangeOf } from '../../utils/doeFilter'
 import styled from 'styled-components'
 import Scatter3DPlot from './Scatter3DPlot'
 import SplomPlot from './SplomPlot'
@@ -215,6 +215,34 @@ function formatCell(val, error) {
   return String(val)
 }
 
+const FixedBar = styled.div`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+`
+
+const FixedLabel = styled.span`
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  margin-right: 4px;
+`
+
+const FixedChip = styled.span`
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #4b5563;
+  border: 1px solid #dfe3ea;
+`
+
 function DoeResultsView({ result, variables }) {
   const [sortKey, setSortKey] = useState(null)
   const [sortDir, setSortDir] = useState('asc')
@@ -249,6 +277,12 @@ function DoeResultsView({ result, variables }) {
   // useMemo 의 콜백은 렌더 중에 **즉시** 돈다. 아래에 두면 조건이 하나도
   // 안 걸린 순간(=이 안내가 필요한 바로 그때) 아직 정의되지 않은 이름을
   // 불러 화면이 죽는다.
+  // 고정된 입력은 결과에서 알아낸다 — 값이 하나뿐인 열이 곧 고정이다.
+  const fixedInputs = useMemo(
+    () => constantInputs(result?.rows, result?.inputKeys),
+    [result],
+  )
+
   const labelOf = (key) => labels[key] || key
   const trim = (n) => (Number.isFinite(n)
     ? String(Math.round(n * 1e6) / 1e6)
@@ -348,6 +382,17 @@ function DoeResultsView({ result, variables }) {
         summary={filtered}
         hint={missHint}
       />
+
+      {fixedInputs.length > 0 && (
+        <FixedBar>
+          <FixedLabel>고정한 입력</FixedLabel>
+          {fixedInputs.map(f => (
+            <FixedChip key={f.key}>
+              {labelOf(f.key)} = {Array.isArray(f.value) ? `[${f.value.length}개]` : String(f.value)}
+            </FixedChip>
+          ))}
+        </FixedBar>
+      )}
 
       <Toolbar>
         <Info>

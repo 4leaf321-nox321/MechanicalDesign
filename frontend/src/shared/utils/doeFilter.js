@@ -132,4 +132,42 @@ export function rangeOf(rows, key) {
   return Number.isFinite(min) ? { min, max } : null
 }
 
+/**
+ * 이번 탐색에서 **한 번도 변하지 않은 입력**.
+ *
+ * DOE 설정에서 '고정' 으로 둔 것들인데, 결과 화면에는 그 사실이 안 보인다. 표에는
+ * 같은 값이 반복되는 열로 들어가 있어서 전체를 훑기 전에는 무엇이 고정이고 무엇이
+ * 변한 것인지 알 수 없다 — 그러면 이 결과가 **어느 조건에서 나온 것인지** 모르는
+ * 채로 그래프를 읽게 된다.
+ *
+ * **설정값을 받지 않고 결과에서 알아낸다.** 값이 하나뿐인 열은 곧 고정이고,
+ * 이렇게 두면 설정과 결과가 어긋날 일이 없다.
+ */
+export function constantInputs(rows, inputKeys) {
+  const list = Array.isArray(rows) ? rows : []
+  if (list.length === 0) return []
+
+  return (inputKeys || [])
+    .map((key) => {
+      const first = list[0][key]
+      // 통째로 비어 있는 열은 '고정' 이 아니다. `Object.is(null, null)` 이 참이라
+      // 그냥 두면 화면에 "= null" 이라는 뜻 없는 칩이 뜬다.
+      if (first === null || first === undefined || first === '') return null
+      const same = list.every(r => sameCell(r[key], first))
+      return same ? { key, value: first } : null
+    })
+    .filter(Boolean)
+}
+
+function sameCell(a, b) {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((x, i) => Object.is(x, b[i]))
+  }
+  // 숫자 3 과 문자열 '3' 은 같은 칸으로 본다. DOE 격자와 고정값이 서로 다른
+  // 경로로 들어와 타입만 다른 경우가 있다.
+  if (a === null || b === null || a === undefined || b === undefined) return false
+  return String(a) === String(b)
+}
+
 export default applyConditions
