@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 import { apiFetch } from '../shared/api/client'
 import { useAuth } from '../shared/auth/AuthContext'
+import OrgTree from '../shared/components/OrgTree'
+import PublishToOrgDialog from '../shared/components/PublishToOrgDialog'
 
 
 // ============================================
@@ -67,6 +69,73 @@ const HeaderSubtitle = styled.p`
   font-size: 0.95rem;
   color: #a0a0b0;
   margin: 0;
+`
+
+/** 왼쪽 트리 + 오른쪽 카드. 트리는 화면의 뼈대라 스크롤과 무관하게 자리를 지킨다. */
+const Body = styled.div`
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 150px);
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+  }
+`
+
+const Main = styled.div`
+  flex: 1;
+  min-width: 0;
+`
+
+/** 지금 어느 자리를 보고 있는지. 없으면 목록이 비었을 때 "카드가 없는 것" 인지
+    "빈 조직을 보고 있는 것" 인지 구분할 수 없다. */
+const Crumb = styled.div`
+  padding: 22px 48px 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+
+  b {
+    color: #1a1a2e;
+    font-size: 1.05rem;
+  }
+`
+
+const EmptyNote = styled.div`
+  padding: 48px;
+  color: #98a2b3;
+  font-size: 0.9rem;
+  line-height: 1.7;
+`
+
+const OrgChips = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+`
+
+const OrgChip = styled.span`
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4f5d8f;
+`
+
+const MountBtn = styled.button`
+  margin-top: 14px;
+  padding: 7px 14px;
+  border: 1px solid #d5dae2;
+  border-radius: 6px;
+  background: white;
+  color: #4b5563;
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #3498db;
+    color: #3498db;
+  }
 `
 
 const CardGrid = styled.div`
@@ -391,18 +460,99 @@ function MainPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // 조직 트리. `selected` 가 빈 문자열이면 전체 보기다.
+  const [tree, setTree] = useState([])
+  const [personal, setPersonal] = useState(null)
+  const [selected, setSelected] = useState('')
+  const [mountTarget, setMountTarget] = useState(null)
+
   useEffect(() => {
-    fetchCards()
+    fetchTree()
   }, [])
 
-  const fetchCards = async () => {
+  // 고른 자리가 바뀌면 목록을 다시 받는다. **화면에서 거르지 않는다** — 거르면
+  // 남의 개인 공간 카드가 응답에는 이미 실려 온 뒤라 개발자도구에 그대로 보인다.
+  useEffect(() => {
+    fetchCards(selected)
+  }, [selected])
+
+  const fetchTree = async () => {
     try {
-      const res = await apiFetch(`/cards`)
+      const res = await apiFetch('/orgs/tree')
       const data = await res.json()
-      setCards(data)
+      setTree(data.tree || [])
+      setPersonal(data.personal || null)
+    } catch (err) {
+      console.error('Failed to fetch org tree:', err)
+    }
+  }
+
+  const fetchCards = async (org) => {
+    try {
+      const res = await apiFetch(org ? `/cards?org=${encodeURIComponent(org)}` : '/cards')
+      const data = await res.json()
+      setCards(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Failed to fetch cards:', err)
     }
+  }
+
+  /** 카드 수가 바뀌면 트리의 숫자도 함께 틀어진다. 둘을 같이 새로 받는다. */
+  const refresh = () => {
+    fetchCards(selected)
+    fetchTree()
+  }
+
+  // --- 조직 관리 (관리자) -------------------------------------------------------
+
+  const handleAddOrg = async (parentSlug) => {
+    const name = window.prompt(
+      parentSlug ? '하위 조직 이름' : '조직 이름 (최상위)',
+    )
+    if (!name || !name.trim()) return
+    const res = await apiFetch('/orgs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), parent_slug: parentSlug }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      window.alert(body.error || '조직을 만들지 못했습니다.')
+      return
+    }
+    fetchTree()
+  }
+
+  const handleRenameOrg = async (org) => {
+    const name = window.prompt('조직 이름', org.name)
+    if (!name || !name.trim() || name.trim() === org.name) return
+    // 이름만 바꾼다. 주소(slug)는 그대로 둔다 — 바꾸면 저장해 둔 링크가 죽는다.
+    const res = await apiFetch(`/orgs/${encodeURIComponent(org.slug)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      window.alert(body.error || '이름을 바꾸지 못했습니다.')
+      return
+    }
+    fetchTree()
+  }
+
+  const handleDeleteOrg = async (org) => {
+    if (!window.confirm(`'${org.name}' 조직을 삭제합니다.
+
+하위 조직이나 게시된 카드가 있으면 삭제되지 않습니다.`)) return
+    const res = await apiFetch(`/orgs/${encodeURIComponent(org.slug)}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      // 무엇을 잃게 되는지 서버가 숫자로 말해 준다. 그대로 보여 준다.
+      window.alert(body.error || '삭제하지 못했습니다.')
+      return
+    }
+    if (selected === org.slug) setSelected('')
+    fetchTree()
   }
 
   /**
@@ -503,6 +653,31 @@ function MainPage() {
     setShowModal(true)
   }
 
+  const isPersonalView = !!personal && selected === personal.slug
+
+  /** 지금 보고 있는 자리의 이름. 트리를 평탄화해 찾는다. */
+  const selectedLabel = (() => {
+    if (!selected) return '전체'
+    if (isPersonalView) return '내 카드'
+    const walk = (nodes) => {
+      for (const n of nodes) {
+        if (n.slug === selected) return n.name
+        const hit = walk(n.children || [])
+        if (hit) return hit
+      }
+      return null
+    }
+    return walk(tree) || selected
+  })()
+
+  /**
+   * 조직에 올리고 내릴 수 있는 사람인가.
+   *
+   * 서버가 같은 판정을 다시 한다. 여기 것은 **버튼을 감추는 용도**일 뿐이다 —
+   * 화면에서만 막으면 요청을 직접 보내는 길이 그대로 열려 있다.
+   */
+  const canPlace = (card) => !!user && (user.is_admin || card.created_by_id === user.id)
+
   return (
     <PageWrapper>
       <Header>
@@ -526,7 +701,25 @@ function MainPage() {
         </HeaderRow>
       </Header>
 
-      <CardGrid>
+      <Body>
+        <OrgTree
+          tree={tree}
+          personal={personal}
+          selected={selected}
+          onSelect={setSelected}
+          isAdmin={!!user?.is_admin}
+          onAdd={handleAddOrg}
+          onRename={handleRenameOrg}
+          onDelete={handleDeleteOrg}
+        />
+
+        <Main>
+          <Crumb>
+            <b>{selectedLabel}</b>
+            {isPersonalView && ' — 아직 어디에도 올리지 않은 카드가 여기 있습니다'}
+          </Crumb>
+
+          <CardGrid>
         {cards.map((card) => {
           const isDraft = card.status === 'draft'
           const byAi = card.origin === 'mcp'
@@ -556,8 +749,28 @@ function MainPage() {
               )}
               <CardName>{card.name}</CardName>
               <CardDesc>{card.description}</CardDesc>
-              {isDraft && (
+              {/* 어디에 걸려 있는지 카드 위에서 바로 보인다. 대화상자를 열어야만
+                  알 수 있으면, 내려야 할 카드가 걸린 채로 남는다. */}
+              {card.mounted_orgs?.length > 0 && (
+                <OrgChips>
+                  {card.mounted_orgs.map((o) => (
+                    <OrgChip key={o.slug}>{o.name}</OrgChip>
+                  ))}
+                </OrgChips>
+              )}
+              {isDraft ? (
                 <PublishBtn onClick={(e) => handlePublish(e, card)}>게시하기</PublishBtn>
+              ) : (
+                canPlace(card) && (
+                  <MountBtn
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMountTarget(card)
+                    }}
+                  >
+                    {card.mounted_orgs?.length ? '조직 게시 관리' : '조직에 게시'}
+                  </MountBtn>
+                )
               )}
             </Card>
           )
@@ -567,7 +780,30 @@ function MainPage() {
           <AddIcon>+</AddIcon>
           <AddText>카드 추가</AddText>
         </AddCard>
-      </CardGrid>
+          </CardGrid>
+
+          {cards.length === 0 && (
+            <EmptyNote>
+              {isPersonalView
+                ? '내 카드가 없습니다. 오른쪽 위 “카드 추가”로 만들면 여기에 놓입니다.'
+                : selected
+                  ? '이 조직에 게시된 카드가 없습니다. 카드를 만든 사람이 “조직에 게시”로 올릴 수 있습니다.'
+                  : '카드가 없습니다.'}
+            </EmptyNote>
+          )}
+        </Main>
+      </Body>
+
+      {mountTarget && (
+        <PublishToOrgDialog
+          card={mountTarget}
+          onClose={() => {
+            setMountTarget(null)
+            refresh()
+          }}
+          onChanged={(updated) => setMountTarget(updated)}
+        />
+      )}
 
       {showModal && (
         <Overlay onClick={() => setShowModal(false)}>

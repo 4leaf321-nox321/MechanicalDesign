@@ -67,6 +67,22 @@ class Card(db.Model):
     **사람이 확인한 뒤에 기계가 또 손댔다**는 뜻이라, 그때의 검토는 지금
     화면에 있는 것과 다른 카드를 본 것이다."""
 
+    #: 이 카드의 **집** — 태어난 개인 공간.
+    #:
+    #: 조직 게시(`card_mounts`)와는 축이 다르다. 게시를 전부 내려도 카드는
+    #: 만든 사람의 공간에 남아 있어야 한다. 둘을 한 칸에 담으면 "게시를
+    #: 내렸더니 카드가 어디에도 없다" 가 된다.
+    #:
+    #: 인증이 붙기 전에 만들어진 카드는 NULL 이다 — 만든 사람을 모르므로
+    #: 집도 지어낼 수 없다.
+    home_org_slug = db.Column(db.String(64),
+                              db.ForeignKey('organizations.slug', ondelete='SET NULL'),
+                              nullable=True, index=True)
+    home_org = db.relationship('Organization', foreign_keys=[home_org_slug])
+
+    mounts = db.relationship('CardMount', cascade='all, delete-orphan',
+                             backref='card', lazy='selectin')
+
     containers = db.relationship('Container', backref='card', cascade='all, delete-orphan', order_by='Container.sort_order')
     variables = db.relationship('Variable', backref='card', cascade='all, delete-orphan', order_by='Variable.sort_order')
     images = db.relationship('Image', backref='card', cascade='all, delete-orphan', order_by='Image.sort_order')
@@ -94,6 +110,14 @@ class Card(db.Model):
             # 화면이 직접 두 시각을 비교하게 두지 않는다. 비교 방향을 한 번만
             # 틀려도 "괜찮다" 고 표시되고, 그 오류는 아무도 못 찾는다.
             'ai_edited_after_publish': self.ai_edited_after_publish,
+            'home_org_slug': self.home_org_slug,
+            'home_org_name': self.home_org.name if self.home_org else None,
+            # 어느 조직에 걸려 있는지. 카드 하나가 여러 조직에 동시에 걸리므로
+            # 목록이다. 화면이 "게시됨/안 됨" 을 넘어 **어디에** 게시됐는지를
+            # 보여 줘야 사람이 내릴지 더 올릴지 판단할 수 있다.
+            'mounted_orgs': [{'slug': m.org_slug,
+                              'name': m.org.name if m.org else m.org_slug}
+                             for m in self.mounts],
         }
 
     @property

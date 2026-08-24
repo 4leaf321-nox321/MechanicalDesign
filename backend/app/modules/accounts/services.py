@@ -5,12 +5,15 @@
 복잡해진다.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from app.extensions import db
 from app.modules.accounts.models import USER_STATUSES, User
 from app.modules.auth import security, services as auth_services
 from app.shared.errors import AppError, Conflict, Forbidden, NotFound
+
+logger = logging.getLogger(__name__)
 
 MAX_EMAIL_LENGTH = 254
 MIN_EMAIL_LENGTH = 3
@@ -92,7 +95,28 @@ def signup(email, password, display_name):
     )
     db.session.add(user)
     db.session.commit()
+    _ensure_personal_space(user)
     return user
+
+
+def _ensure_personal_space(user):
+    """가입한 사람에게 개인 공간을 만들어 준다.
+
+    **함수 안에서 import 한다.** 조직 모듈은 카드가 놓이는 자리를 다루고 계정
+    모듈은 사람을 다루는데, 위쪽에서 서로를 import 하면 어느 쪽을 먼저 읽어도
+    반대쪽이 아직 준비되지 않은 순간이 생긴다.
+
+    실패해도 가입을 되돌리지 않는다. 개인 공간은 나중에 `ensure_personal_org`
+    가 필요할 때 다시 만들어 준다 — 여기서 예외를 올려 보내면 계정은 만들어졌는데
+    "가입 실패" 라고 나오고, 그 사람은 같은 이메일로 다시 가입하려다 막힌다.
+    """
+    from app.modules.orgs import services as org_services
+
+    try:
+        org_services.ensure_personal_org(user, commit=True)
+    except Exception:  # noqa: BLE001 — 가입 자체는 이미 끝났다
+        db.session.rollback()
+        logger.exception('개인 공간 생성 실패 (user_id=%s)', user.id)
 
 
 # --- 관리자 조작 ----------------------------------------------------------------
@@ -133,6 +157,7 @@ def create_account(email, display_name, is_admin, actor):
     )
     db.session.add(user)
     db.session.commit()
+    _ensure_personal_space(user)
     return user, temporary
 
 

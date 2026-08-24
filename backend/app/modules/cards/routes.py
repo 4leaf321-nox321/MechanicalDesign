@@ -8,6 +8,9 @@ from flask import Blueprint, g, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.shared.auth import current_user
+from app.shared.errors import AppError
+from app.modules.orgs import services as org_services
+from app.modules.orgs.models import CardMount, Organization
 from . import expressions, revisions, tables, validation
 from .models import (Card, CardRevision, Container, Variable, Image,
                      VariableTemplate, WidgetPlacement)
@@ -282,7 +285,15 @@ def record_card_change(response):
 
 @cards_bp.route('', methods=['GET'])
 def get_cards():
-    """게시된 카드 + 내 초안. 관리자는 모든 초안을 본다."""
+    """게시된 카드 + 내 초안. 관리자는 모든 초안을 본다.
+
+    `?org=<slug>` 를 주면 그 조직에 게시된 카드만. 조직이면 **하위 조직에
+    게시된 것까지** 함께 온다 — 팀에만 올린 카드를 본부에서 못 보면 본부장은
+    팀을 하나씩 눌러 보게 된다.
+
+    `?org=personal-<id>` 는 그 사람의 개인 공간이다. 게시가 아니라 **집**으로
+    찾는다(`home_org_slug`) — 아직 아무 데도 안 올린 카드가 거기 있어야 한다.
+    """
     actor = current_user()
     query = Card.query
     if not actor.is_admin:
@@ -290,6 +301,26 @@ def get_cards():
         # 이미 실려 나간 뒤라, 개발자도구만 열면 그대로 보인다.
         query = query.filter(db.or_(Card.status != 'draft',
                                     Card.created_by_id == actor.id))
+
+    org_slug = (request.args.get('org') or '').strip()
+    if org_slug:
+        org = db.session.get(Organization, org_slug)
+        if org is None:
+            raise AppError('MD-ORG-0104', f"조직 '{org_slug}' 을 찾을 수 없습니다.",
+                           status=404)
+        if org.kind == 'personal':
+            # 남의 개인 공간은 열지 않는다. 카드가 다 보이는 것과 **남의 서랍이
+            # 열리는 것**은 다른 얘기다 — 거기엔 아직 보여 줄 생각이 없는
+            # 초안이 들어 있다.
+            if org.owner_user_id != actor.id and not actor.is_admin:
+                raise AppError('MD-ORG-0109', '다른 사람의 개인 공간은 볼 수 없습니다.',
+                               status=403)
+            query = query.filter(Card.home_org_slug == org_slug)
+        else:
+            slugs = org_services.descendant_slugs(org_slug)
+            query = (query.join(CardMount, CardMount.card_id == Card.id)
+                          .filter(CardMount.org_slug.in_(slugs)).distinct())
+
     cards = query.order_by(Card.sort_order, Card.created_at).all()
     return jsonify([c.to_dict() for c in cards])
 
@@ -324,12 +355,19 @@ def create_card():
     else:
         status = 'draft' if data.get('draft') else 'published'
 
+    # **카드는 만든 사람의 개인 공간에서 태어난다.** 조직에 올릴지는 그다음
+    # 결정이고, 그 사이에 사람이 한 번 본다. 만들자마자 조직에 뿌리면 AI 가
+    # 만든 초안이 검토 없이 팀 게시판에 걸린다.
+    actor = current_user()
+    home = org_services.ensure_personal_org(actor)
+
     card = Card(
         name=name,
         description=description,
         route=route,
         sort_order=max_order + 1,
-        created_by_id=current_user().id,
+        created_by_id=actor.id,
+        home_org_slug=home.slug,
         status=status,
         origin='mcp' if via_token else 'human',
     )
@@ -562,6 +600,78 @@ def unpublish_card(card_id):
     card.published_by_id = None
     db.session.commit()
     return jsonify({'card': card.to_dict(), 'message': '초안으로 내렸습니다.'})
+
+
+def _assert_can_place(card):
+    """조직에 올리고 내리는 것은 게시와 같은 무게다 — 같은 규칙을 적용한다.
+
+    토큰(MCP·스크립트)으로는 막는다. AI 가 만들고 스스로 팀 게시판에 거는 길이
+    열리면, 카드를 검토하는 사람은 이미 걸린 뒤에야 그것을 보게 된다.
+    """
+    if _acting_via_token():
+        raise AppError(
+            'MD-CARDS-0101',
+            '조직 게시는 사람이 웹에서 해야 합니다. 토큰(MCP·스크립트)으로는 할 수 '
+            '없습니다 — 사람이 숫자를 보고 판단하는 단계이기 때문입니다.',
+            status=403)
+
+    actor = current_user()
+    if not (actor.is_admin or card.created_by_id == actor.id):
+        raise AppError('MD-CARDS-0102',
+                       '이 카드를 만든 사람이나 관리자만 조직에 게시할 수 있습니다.',
+                       status=403)
+    return actor
+
+
+@cards_bp.route('/<int:card_id>/mounts', methods=['POST'])
+def mount_card(card_id):
+    """카드를 조직에 게시한다.
+
+    **복사가 아니라 살아 있는 참조다.** 개인 공간의 원본을 고치면 걸려 있는 모든
+    조직에 그대로 반영된다. 사본이었다면 "그 팀 게시판 것만 옛날 계수" 라는
+    상태가 조용히 생기고, 그것을 알아채는 방법이 없다.
+    """
+    card = Card.query.get_or_404(card_id)
+    actor = _assert_can_place(card)
+
+    org_slug = ((request.get_json(silent=True) or {}).get('org_slug') or '').strip()
+    org = db.session.get(Organization, org_slug) if org_slug else None
+    if org is None or org.kind != 'org':
+        raise AppError('MD-ORG-0104', f"조직 '{org_slug}' 을 찾을 수 없습니다.", status=404)
+
+    # **초안은 조직에 올릴 수 없다.** 게시(status)는 "사람이 이 계산을 봤다",
+    # 조직 게시(mount)는 "어디에서 보인다" 로 축이 다르다. 검토를 건너뛴 카드가
+    # 팀 게시판에 걸리면 두 단계를 나눈 의미가 없어진다.
+    if card.is_draft:
+        raise AppError('MD-CARDS-0110',
+                       '초안입니다. 먼저 게시한 뒤에 조직에 올릴 수 있습니다.',
+                       status=409)
+
+    existing = db.session.get(CardMount, {'card_id': card.id, 'org_slug': org.slug})
+    if existing is not None:
+        return jsonify({'card': card.to_dict(),
+                        'message': f"이미 '{org.name}' 에 게시되어 있습니다."}), 200
+
+    db.session.add(CardMount(card_id=card.id, org_slug=org.slug,
+                             mounted_by_id=actor.id))
+    db.session.commit()
+    return jsonify({'card': card.to_dict(),
+                    'message': f"'{org.name}' 에 게시했습니다."}), 201
+
+
+@cards_bp.route('/<int:card_id>/mounts/<path:org_slug>', methods=['DELETE'])
+def unmount_card(card_id, org_slug):
+    """조직에서 내린다. **카드는 지워지지 않는다** — 개인 공간에 그대로 남는다."""
+    card = Card.query.get_or_404(card_id)
+    _assert_can_place(card)
+
+    mount = db.session.get(CardMount, {'card_id': card.id, 'org_slug': org_slug})
+    if mount is None:
+        raise AppError('MD-CARDS-0111', '그 조직에 게시되어 있지 않습니다.', status=404)
+
+    db.session.delete(mount)
+    db.session.commit()
+    return jsonify({'card': card.to_dict(), 'message': '조직에서 내렸습니다.'})
 
 
 @cards_bp.route('/<int:card_id>', methods=['DELETE'])
