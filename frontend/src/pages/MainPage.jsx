@@ -883,6 +883,7 @@ function MainPage() {
       {mountTarget && (
         <PublishToOrgDialog
           card={mountTarget}
+          tree={tree}
           onClose={() => {
             setMountTarget(null)
             refresh()
