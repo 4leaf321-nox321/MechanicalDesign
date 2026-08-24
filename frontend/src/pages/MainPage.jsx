@@ -133,6 +133,59 @@ const EmptyNote = styled.div`
   line-height: 1.7;
 `
 
+const SearchRow = styled.div`
+  display: flex;
+  gap: 8px;
+  padding: 22px 48px 0;
+  max-width: 1400px;
+`
+
+const SearchInput = styled.input`
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: white;
+
+  &:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+`
+
+const ClearBtn = styled.button`
+  padding: 8px 14px;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+  background: white;
+  color: #6b7280;
+  font-size: 0.83rem;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: #3498db;
+    color: #3498db;
+  }
+`
+
+const MatchRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+`
+
+const MatchChip = styled.span`
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff6dd;
+  color: #8a6d1a;
+  border: 1px solid #f0d98c;
+`
+
 const OrgChips = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -560,6 +613,10 @@ function MainPage() {
   const [selected, setSelected] = useState('')
   const [mountTarget, setMountTarget] = useState(null)
   const [trashCount, setTrashCount] = useState(0)
+  // 입력 중인 글자와 **실제로 보낸 검색어**를 나눈다. 한 글자마다 요청을
+  // 보내면 타이핑이 끊기고, 서버는 버려질 결과를 계속 만든다.
+  const [searchInput, setSearchInput] = useState('')
+  const [query, setQuery] = useState('')
   // 성공 알림. 오류(orgError)와 자리를 나눠 쓰면 성공이 붉게 보인다.
   const [notice, setNotice] = useState('')
 
@@ -570,8 +627,14 @@ function MainPage() {
   // 고른 자리가 바뀌면 목록을 다시 받는다. **화면에서 거르지 않는다** — 거르면
   // 남의 개인 공간 카드가 응답에는 이미 실려 온 뒤라 개발자도구에 그대로 보인다.
   useEffect(() => {
-    fetchCards(selected)
-  }, [selected])
+    fetchCards(selected, query)
+  }, [selected, query])
+
+  // 타이핑이 멎으면 그때 보낸다.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(searchInput.trim()), 250)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   const fetchTree = async () => {
     try {
@@ -593,15 +656,20 @@ function MainPage() {
     }
   }
 
-  const fetchCards = async (org) => {
+  const fetchCards = async (org, q = '') => {
     try {
       // 휴지통은 **다른 엔드포인트**다. 평소 목록에 조건부로 섞으면, 거르는
       // 조건을 한 군데서 빠뜨리는 순간 지운 카드가 되살아난 것처럼 보인다.
-      const path = org === TRASH
-        ? '/cards/trash'
-        : org
-          ? `/cards?org=${encodeURIComponent(org)}`
-          : '/cards'
+      //
+      // 검색은 자리를 가리지 않으므로 org 를 함께 보내지 않는다. 찾는다는
+      // 것은 자리를 모른다는 뜻이다.
+      const path = q
+        ? `/cards?q=${encodeURIComponent(q)}`
+        : org === TRASH
+          ? '/cards/trash'
+          : org
+            ? `/cards?org=${encodeURIComponent(org)}`
+            : '/cards'
       const res = await apiFetch(path)
       const data = await res.json()
       setCards(Array.isArray(data) ? data : [])
@@ -612,7 +680,7 @@ function MainPage() {
 
   /** 카드 수가 바뀌면 트리의 숫자도 함께 틀어진다. 둘을 같이 새로 받는다. */
   const refresh = () => {
-    fetchCards(selected)
+    fetchCards(selected, query)
     fetchTree()
   }
 
@@ -857,11 +925,12 @@ function MainPage() {
     setShowModal(true)
   }
 
-  const isPersonalView = !!personal && selected === personal.slug
-  const isTrashView = selected === TRASH
+  const isPersonalView = !!personal && selected === personal.slug && !query
+  const isTrashView = selected === TRASH && !query
 
   /** 지금 보고 있는 자리의 이름. 트리를 평탄화해 찾는다. */
   const selectedLabel = (() => {
+    if (query) return `'${query}' 검색 결과`
     if (!selected) return '전체'
     if (isTrashView) return '지운 카드'
     if (isPersonalView) return '내 카드'
@@ -923,10 +992,21 @@ function MainPage() {
         />
 
         <Main>
+          <SearchRow>
+            <SearchInput
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="카드 이름 · 설명 · 변수 · 수식에서 찾기 (예: 볼트, sig, 9.81)"
+            />
+            {searchInput && (
+              <ClearBtn onClick={() => setSearchInput('')}>지우기</ClearBtn>
+            )}
+          </SearchRow>
           <Crumb>
             <b>{selectedLabel}</b>
             {isPersonalView && ' — 아직 어디에도 올리지 않은 카드가 여기 있습니다'}
             {isTrashView && ' — 되살리거나, 여기서 지워야 완전히 사라집니다'}
+            {query && ` — ${cards.length}장 (조직과 무관하게 전부 찾습니다)`}
           </Crumb>
 
           {/* 드래그 실패를 조용히 넘기지 않는다. 트리는 서버 상태로 되돌아가
@@ -986,6 +1066,15 @@ function MainPage() {
               )}
               {/* 어디에 걸려 있는지 카드 위에서 바로 보인다. 대화상자를 열어야만
                   알 수 있으면, 내려야 할 카드가 걸린 채로 남는다. */}
+              {/* 무엇 때문에 걸렸는지. 이름만 보여 주면 그 카드의 **어디에**
+                  그 값이 있는지 다시 찾아야 한다. */}
+              {query && card.match?.length > 0 && (
+                <MatchRow>
+                  {card.match.map((m, i) => (
+                    <MatchChip key={i}>{m}</MatchChip>
+                  ))}
+                </MatchRow>
+              )}
               {card.mounted_orgs?.length > 0 && (
                 <OrgChips>
                   {card.mounted_orgs.map((o) => (
@@ -1032,7 +1121,9 @@ function MainPage() {
 
           {cards.length === 0 && (
             <EmptyNote>
-              {isTrashView
+              {query
+                ? `'${query}' 로 찾은 카드가 없습니다. 이름·설명뿐 아니라 변수 이름과 수식에서도 찾습니다.`
+                : isTrashView
                 ? '휴지통이 비어 있습니다.'
                 : isPersonalView
                 ? '내 카드가 없습니다. 오른쪽 위 “카드 추가”로 만들면 여기에 놓입니다.'

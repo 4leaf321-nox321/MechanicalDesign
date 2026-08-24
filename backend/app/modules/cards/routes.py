@@ -283,6 +283,66 @@ def record_card_change(response):
     return response
 
 
+def _search(query, keyword):
+    """이름·설명뿐 아니라 **변수와 수식까지** 훑는다.
+
+    "이 계수를 쓰는 카드가 어디 있지" 가 실제로 자주 나오는 질문이다. 이름만
+    찾으면 그 질문에 답할 수 없고, 사람은 카드를 하나씩 열어 보게 된다.
+
+    무엇 때문에 걸렸는지 함께 돌려준다. `9.81` 로 검색해 카드 이름만 나오면,
+    그 카드의 **어디에** 그 값이 있는지 다시 찾아야 한다.
+    """
+    like = f'%{keyword}%'
+
+    # 변수 쪽에서 걸린 카드. 서브쿼리로 두면 카드가 중복되지 않아 distinct 가
+    # 필요 없고, 아래에서 "무엇이 걸렸나" 를 다시 계산할 때도 같은 조건을 쓴다.
+    var_match = db.session.query(Variable.card_id).filter(db.or_(
+        Variable.name.ilike(like),
+        Variable.symbol.ilike(like),
+        Variable.formula.ilike(like),
+    ))
+
+    rows = (query.filter(db.or_(
+                Card.name.ilike(like),
+                Card.description.ilike(like),
+                Card.id.in_(var_match),
+            ))
+            .order_by(Card.sort_order, Card.created_at)
+            .limit(200).all())
+
+    if not rows:
+        return []
+
+    # 걸린 변수를 카드별로 한 번에 모은다. 카드마다 따로 물으면 결과 수만큼
+    # 질의가 나간다.
+    hits = {}
+    for card_id, name, symbol, formula in (
+            db.session.query(Variable.card_id, Variable.name, Variable.symbol,
+                             Variable.formula)
+            .filter(Variable.card_id.in_([c.id for c in rows]))
+            .filter(db.or_(Variable.name.ilike(like),
+                           Variable.symbol.ilike(like),
+                           Variable.formula.ilike(like)))
+            .all()):
+        hits.setdefault(card_id, []).append(
+            f'{name} ({symbol})' if symbol else name)
+
+    lowered = keyword.lower()
+    out = []
+    for card in rows:
+        body = card.to_dict()
+        why = []
+        if lowered in (card.name or '').lower():
+            why.append('이름')
+        if lowered in (card.description or '').lower():
+            why.append('설명')
+        for label in hits.get(card.id, [])[:3]:
+            why.append(label)
+        body['match'] = why
+        out.append(body)
+    return out
+
+
 @cards_bp.route('', methods=['GET'])
 def get_cards():
     """게시된 카드 + 내 초안. 관리자는 모든 초안을 본다.
@@ -297,6 +357,22 @@ def get_cards():
     actor = current_user()
     # 지운 카드는 어떤 조회에도 섞이지 않는다. 휴지통은 따로 있다(/cards/trash).
     query = Card.query.filter(Card.deleted_at.is_(None))
+
+    keyword = (request.args.get('q') or '').strip()
+    if keyword:
+        # **검색은 자리를 가리지 않는다.**
+        #
+        # 조직 안에서만 찾게 하면, 어느 조직에 있는지 몰라서 찾는 사람이
+        # 트리를 하나씩 눌러 가며 같은 검색을 반복하게 된다 — 찾는다는 것은
+        # 자리를 모른다는 뜻이다. 그래서 org 가 함께 와도 무시한다.
+        #
+        # 다만 **내 초안은 포함한다.** 목록(전체)에서 뺀 것과 다른 판단인데,
+        # 목록은 훑어보는 자리이고 검색은 이름을 알고 찾아가는 자리이기
+        # 때문이다. 방금 복제한 사본을 검색으로 못 찾으면 쓸모가 없다.
+        # 남의 초안은 여기서도 나오지 않는다.
+        query = query.filter(db.or_(Card.status != 'draft',
+                                    Card.created_by_id == actor.id))
+        return jsonify(_search(query, keyword))
 
     org_slug = (request.args.get('org') or '').strip()
     if org_slug:
