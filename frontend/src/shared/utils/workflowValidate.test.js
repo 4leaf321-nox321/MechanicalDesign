@@ -126,13 +126,32 @@ describe('안 채워진 입력', () => {
 })
 
 describe('돌릴 수 없는 상태', () => {
-  it('순환이면 거기서 멈추고 다른 검사는 하지 않는다', () => {
-    // 순서가 없으면 나머지 검사는 순서가 있다고 보고 도는 것이라 뜻이 없다.
-    const wf = wiring({}, {})
-    wf.order = null
-    const issues = validateWorkflow(wf, cards())
+  it('순환은 오류가 아니라 반복 블록이다', () => {
+    // 서로 물고 있는 모델은 기계 설계에 실제로 있다. 막는 대신 돌려서 수렴시킨다.
+    const wf = wiring({ 1: 50 }, { 12: 25 })
+    wf.links.push({ id: 2, from_node_id: 2, from_variable_id: 13,
+                    from_label: '응력 (sig)',
+                    to_node_id: 1, to_variable_id: 1, to_label: '무게 (m)' })
 
-    expect(codes(issues)).toEqual(['cycle'])
+    const issues = validateWorkflow(wf, cards())
+    expect(issues.filter(i => i.level === 'error')).toEqual([])
+    expect(codes(issues)).toContain('loop')
+  })
+
+  it('되먹임 입력에 초기 추정값이 없으면 오류다', () => {
+    // 고리는 어딘가에서 시작해야 한다. 시작할 숫자가 없으면 아무 데서도
+    // 출발하지 못하고, 그것을 말해 주지 않으면 사람은 왜 안 도는지 모른다.
+    const wf = wiring({}, { 12: 25 })
+    wf.links.push({ id: 2, from_node_id: 2, from_variable_id: 13,
+                    from_label: '응력 (sig)',
+                    to_node_id: 1, to_variable_id: 1, to_label: '무게 (m)' })
+
+    const issues = validateWorkflow(wf, cards())
+    const seed = issues.find(i => i.code === 'no-seed')
+    expect(seed.level).toBe('error')
+    expect(seed.node_id).toBe(1)
+    expect(seed.variable_id).toBe(1)
+    expect(seed.message).toContain('초기 추정값')
   })
 
   it('노드가 없으면 그것부터 말한다', () => {

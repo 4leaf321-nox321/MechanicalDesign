@@ -101,9 +101,7 @@ def lookup_workflow():
     if wf is None or not wf.is_visible_to(current_user()):
         raise AppError('MD-WF-0101', '워크플로를 찾을 수 없습니다.', status=404)
 
-    body = wf.to_dict(full=True)
-    body['order'] = services.topological_order(wf)
-    return jsonify(body)
+    return jsonify(wf.to_dict(full=True))
 
 
 @workflows_bp.route('/<int:workflow_id>', methods=['GET'])
@@ -114,11 +112,12 @@ def get_workflow(workflow_id):
     가리키고 노드는 카드를 가리킨다. 세 번 부르게 하면 그중 하나가 낡은 채로
     화면이 그려지는 순간이 생긴다.
     """
+    # **실행 순서는 여기서 정하지 않는다.** 순환을 허용한 뒤로 순서는
+    # 「블록으로 묶고 그 안에서 반복」 이라는 규칙이 되었고, 그 규칙은
+    # 계산기가 안다. 서버가 같은 것을 다른 말로 한 번 더 구현하면 두 벌이
+    # 되고, 두 벌은 반드시 어긋난다 — 그때 새는 쪽은 오류를 내지 않는다.
     wf = services.get_visible(workflow_id, current_user())
-    body = wf.to_dict(full=True)
-    # 실행 순서를 함께 준다. 순환이면 None 이고, 화면은 그것으로 경고를 띄운다.
-    body['order'] = services.topological_order(wf)
-    return jsonify(body)
+    return jsonify(wf.to_dict(full=True))
 
 
 @workflows_bp.route('', methods=['POST'])
@@ -147,6 +146,7 @@ def update_workflow(workflow_id):
         wf.description = (data.get('description') or '').strip()
     if 'color' in data:
         wf.color = data.get('color') or '#6c5ce7'
+    services.set_iteration(wf, data)
 
     # 이름을 고쳐도 주소는 그대로 둔다 — 바꾸면 저장해 둔 링크가 죽는다.
     db.session.commit()

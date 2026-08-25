@@ -149,9 +149,6 @@ def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id):
     src = _node_of(wf, from_node_id)
     dst = _node_of(wf, to_node_id)
 
-    if src.id == dst.id:
-        raise AppError('MD-WF-0120', '같은 노드끼리는 이을 수 없습니다.')
-
     from_var = _variable_of(src, from_variable_id)
     to_var = _variable_of(dst, to_variable_id)
 
@@ -176,7 +173,10 @@ def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id):
                        '한 입력에는 하나만 이을 수 있습니다 — 먼저 끊어 주세요.',
                        status=409)
 
-    _assert_no_cycle(wf, src.id, dst.id)
+    # **순환을 막지 않는다.** 서로 물고 있는 모델은 기계 설계에 실제로 있고
+    # (축 지름 → 자중 → 하중 → 축 지름), 그것을 푸는 것이 반복 블록이다.
+    # 영영 도는 실행이 무서워 막았던 것인데, 이제 반복 한도가 그 일을 한다.
+    # 어디가 고리인지, 어디에 초기 추정값이 필요한지는 계산하는 쪽이 판단한다.
 
     link = WorkflowLink(
         workflow_id=wf.id,
@@ -219,57 +219,38 @@ def _variable_of(node, variable_id):
     return variable
 
 
-def _assert_no_cycle(wf, from_node_id, to_node_id):
-    """A → B 를 이었을 때 되돌아오는 길이 생기는지 본다.
+def set_iteration(wf, data):
+    """반복 설정. **범위를 좁게 막는다.**
 
-    막지 않으면 실행할 때 **영영 끝나지 않거나** 순서를 정할 수 없다. 조직 트리
-    에서 푼 것과 같은 문제이고, 여기서는 값이 흐르는 방향이 화살표다.
+    계산은 브라우저에서 돌아서, 반복 한도에 100000 이 들어가면 그 워크플로를 연
+    사람의 화면이 통째로 멎는다. 오타 하나가 그렇게 된다.
+
+    완화계수는 0 < w <= 2 다. 2 를 넘으면 보폭이 너무 커져 잡히던 고리도 튀고,
+    0 이면 값이 영영 안 움직여 「수렴」 처럼 보인다 — 후자가 더 나쁘다.
     """
-    edges = {}
-    for link in WorkflowLink.query.filter_by(workflow_id=wf.id).all():
-        edges.setdefault(link.from_node_id, set()).add(link.to_node_id)
-    edges.setdefault(from_node_id, set()).add(to_node_id)
+    def number(key, low, high, whole=False):
+        if key not in data:
+            return None
+        try:
+            value = int(data[key]) if whole else float(data[key])
+        except (TypeError, ValueError):
+            raise AppError('MD-WF-0130', f'{key} 에는 숫자를 넣어 주세요.')
+        if not (low <= value <= high):
+            raise AppError('MD-WF-0131',
+                           f'{key} 는 {low} 이상 {high} 이하여야 합니다.')
+        return value
 
-    # to 에서 출발해 from 으로 돌아올 수 있으면 순환이다.
-    seen, stack = set(), [to_node_id]
-    while stack:
-        cur = stack.pop()
-        if cur == from_node_id:
-            raise AppError('MD-WF-0126',
-                           '순환 연결입니다 — 값이 돌아와 자기 자신을 다시 정하게 됩니다.')
-        if cur in seen:
-            continue
-        seen.add(cur)
-        stack.extend(edges.get(cur, ()))
+    tolerance = number('iter_tolerance', 1e-12, 0.1)
+    if tolerance is not None:
+        wf.iter_tolerance = tolerance
 
+    limit = number('iter_max', 1, 500, whole=True)
+    if limit is not None:
+        wf.iter_max = limit
 
-def topological_order(wf):
-    """실행 순서. 순환이 있으면 `None`.
-
-    저장할 때 순환을 막지만 여기서도 확인한다 — 사람이 DB 를 직접 고치거나,
-    막는 규칙에 구멍이 있었을 때 **영영 끝나지 않는 실행**보다는 오류가 낫다.
-    """
-    nodes = [n.id for n in wf.nodes]
-    incoming = {nid: 0 for nid in nodes}
-    edges = {nid: set() for nid in nodes}
-
-    for link in wf.links:
-        if link.from_node_id in edges and link.to_node_id in incoming:
-            if link.to_node_id not in edges[link.from_node_id]:
-                edges[link.from_node_id].add(link.to_node_id)
-                incoming[link.to_node_id] += 1
-
-    ready = sorted([nid for nid, n in incoming.items() if n == 0])
-    order = []
-    while ready:
-        cur = ready.pop(0)
-        order.append(cur)
-        for nxt in sorted(edges[cur]):
-            incoming[nxt] -= 1
-            if incoming[nxt] == 0:
-                ready.append(nxt)
-
-    return order if len(order) == len(nodes) else None
+    relaxation = number('iter_relaxation', 0.01, 2.0)
+    if relaxation is not None:
+        wf.iter_relaxation = relaxation
 
 
 # --- 카드 삭제 보호 ---------------------------------------------------------------

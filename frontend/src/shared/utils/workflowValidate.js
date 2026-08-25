@@ -20,7 +20,9 @@
  * 그럴듯해서, 이것만은 사람도 잘 못 잡는다.
  */
 
-export const LEVELS = { error: 'error', warning: 'warning' }
+import { executionBlocks } from './scc'
+
+export const LEVELS = { error: 'error', warning: 'warning', info: 'info' }
 
 function variableMap(variables) {
   const map = new Map()
@@ -58,16 +60,41 @@ export function validateWorkflow(workflow, cardVariables) {
     return issues
   }
 
-  // --- 순환 --------------------------------------------------------------------
-  // 서버가 순서를 못 정하면 null 을 준다. 여기서 멈춰야 한다 — 나머지 검사는
-  // 순서가 있다고 보고 도는 것이라 의미가 없어진다.
-  if (workflow.order === null || workflow.order === undefined) {
+  // --- 반복 블록 ----------------------------------------------------------------
+  // 순환은 **오류가 아니다.** 서로 물고 있는 모델은 기계 설계에 실제로 있고,
+  // 그런 고리는 돌려서 수렴시킨다. 다만 고리는 어딘가에서 시작해야 한다 —
+  // 되먹임으로 들어오는 입력에 시작할 숫자가 없으면 아무 데서도 출발하지
+  // 못한다. 그것만이 오류다.
+  const nodeAlias = new Map(nodes.map(n => [String(n.id), n.alias]))
+  for (const block of executionBlocks(nodes, links)) {
+    if (!block.loop) continue
+
+    const names = block.ids.map(id => `'${nodeAlias.get(String(id))}'`).join(', ')
     issues.push({
-      level: LEVELS.error,
-      code: 'cycle',
-      message: '순환 연결이 있어 실행 순서를 정할 수 없습니다. 연결을 하나 끊어 주세요.',
+      level: LEVELS.info,
+      code: 'loop',
+      node_ids: block.ids,
+      message: `${names} 이(가) 서로 물려 있습니다 — 값이 수렴할 때까지`
+        + ' 돌립니다.',
     })
-    return issues
+
+    for (const link of block.feedback) {
+      const target = nodes.find(n => String(n.id) === String(link.to_node_id))
+      const stored = target?.inputs || {}
+      const raw = stored[String(link.to_variable_id)] ?? stored[link.to_variable_id]
+      const value = Number(raw)
+      if (raw === '' || raw === null || raw === undefined || !Number.isFinite(value)) {
+        issues.push({
+          level: LEVELS.error,
+          code: 'no-seed',
+          node_id: link.to_node_id,
+          variable_id: link.to_variable_id,
+          message: `'${target?.alias}' 의 ${link.to_label || '입력'} 에 초기`
+            + ' 추정값이 필요합니다. 되먹임으로 돌아오는 값이라 시작할 숫자를'
+            + ' 사람이 정해 주어야 합니다.',
+        })
+      }
+    }
   }
 
   const varsOf = (node) => variableMap(cardVariables?.[node.card_id])

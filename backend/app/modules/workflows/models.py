@@ -58,6 +58,23 @@ class Workflow(db.Model):
                               nullable=True)
     deleted_by = db.relationship('User', foreign_keys=[deleted_by_id])
 
+    # --- 반복 설정 ---------------------------------------------------------
+    # 서로 물고 있는 노드는 돌려서 수렴시킨다. 사람이 정하는 것은 **기준**
+    # 이지 판정이 아니다 — 언제 멈출지를 손으로 쓰게 두면, 그 식을 잘못
+    # 쓴 워크플로가 수렴하지 않은 숫자를 답으로 내놓고 오류도 안 낸다.
+    #
+    # 블록마다 두지 않고 워크플로 하나에 둔다. 블록은 배선 따라 생겼다
+    # 없어지므로, 블록에 매달아 두면 선 하나 끊는 순간 설정이 사라진다.
+    iter_tolerance = db.Column(db.Float, nullable=False, default=1e-6,
+                               server_default='0.000001')
+    iter_max = db.Column(db.Integer, nullable=False, default=200,
+                         server_default='200')
+    #: 완화계수 ω. 낮추면 보폭이 줄어 튀는 고리가 잡힌다. 1 이 아닌 이유는
+    #: `iterate.js` 에 적어 두었다 — 모두에게 최선인 값이 없어서, 가장 빠른 값이
+    #: 아니라 **가장 덜 실패하는** 값을 골랐다.
+    iter_relaxation = db.Column(db.Float, nullable=False, default=0.7,
+                                server_default='0.7')
+
     nodes = db.relationship('WorkflowNode', cascade='all, delete-orphan',
                             back_populates='workflow', lazy='selectin',
                             order_by='WorkflowNode.sort_order')
@@ -115,6 +132,9 @@ class Workflow(db.Model):
                                 if self.deleted_by else None),
             'node_count': len(self.nodes),
             'link_count': len(self.links),
+            'iter_tolerance': self.iter_tolerance,
+            'iter_max': self.iter_max,
+            'iter_relaxation': self.iter_relaxation,
         }
         if full:
             body['nodes'] = [n.to_dict() for n in self.nodes]

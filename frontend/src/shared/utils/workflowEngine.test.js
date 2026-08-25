@@ -128,14 +128,15 @@ describe('노드 안에서 실패한 경우', () => {
 })
 
 describe('돌릴 수 없는 워크플로', () => {
-  it('순서가 없으면(순환) 아무것도 계산하지 않는다', () => {
+  it('서버가 준 order 가 없어도 배선으로 순서를 정한다', () => {
+    // 순환을 허용하면서 순서는 여기서 직접 계산한다. 서버의 order 는 순환이
+    // 있으면 비는데, 그때 아무것도 계산하지 않는 것은 이제 맞지 않다.
     const wf = chain({ 1: 50 }, { 12: 25 })
     wf.order = null
 
     const got = runWorkflow(wf, CARDS)
-    expect(got.ok).toBe(false)
-    expect(got.reason).toBe('cycle')
-    expect(got.nodes).toEqual({})
+    expect(got.ok).toBe(true)
+    expect(got.order).toEqual([1, 2])
   })
 
   it('카드가 휴지통에 있으면 그 노드는 막힌다', () => {

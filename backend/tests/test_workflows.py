@@ -8,8 +8,13 @@
     한 입력에 연결 하나        둘이면 어느 값이 이기는지 알 수 없다
     입력에만 꽂을 수 있다      계산되는 칸에 밀어 넣으면 그 수식이 조용히 무시된다
     결과만 내보낼 수 있다      입력을 입력에 잇는 것은 값을 두 번 적는 것일 뿐
-    순환 금지                 실행 순서를 정할 수 없다
     쓰이는 카드는 못 지운다    지우면 그 자리가 뜻을 잃고 워크플로가 반쪽이 된다
+
+**순환은 이제 막지 않는다.** 서로 물고 있는 모델은 기계 설계에 실제로 있고
+(축 지름 → 자중 → 하중 → 축 지름), 그런 고리는 돌려서 수렴시킨다. 영영 도는
+실행이 무서워 막았던 것인데 이제 반복 한도가 그 일을 한다. 어디가 고리이고
+어디에 초기 추정값이 필요한지는 **계산하는 쪽**이 안다 — 서버가 같은 것을 다시
+구현하면 두 벌이 되고, 두 벌은 반드시 어긋난다.
 """
 
 import pytest
@@ -125,7 +130,6 @@ def test_nodes_and_links_hold_the_wiring(app, client, chain):
     full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
     assert len(full['nodes']) == 2
     assert len(full['links']) == 1
-    assert full['order'] == [load['id'], stress['id']]
 
 
 def test_the_same_card_can_sit_in_two_places(app, client, chain):
@@ -194,34 +198,38 @@ def test_you_cannot_send_an_input_onward(app, client, chain):
     assert r.get_json()['code'] == 'MD-WF-0121'
 
 
-def test_a_node_cannot_feed_itself(app, client, chain):
+def test_a_node_may_feed_itself(app, client, chain):
+    """자기 결과를 자기 입력으로 — 가장 단순한 반복이다.
+
+    축 지름이 자중을 낳고 자중이 다시 축 지름을 바꾸는 모양을 카드 한 장으로
+    적으면 이렇게 된다. 막을 이유가 없다.
+    """
     head, wf = chain['head'], chain['wf']
     stress = _node(client, head, wf['id'], chain['stress_id'])
 
     r = _link(client, head, wf['id'], stress, chain['stress_vars']['sig'],
               stress, chain['stress_vars']['Fin'])
-    assert r.status_code == 400
-    assert r.get_json()['code'] == 'MD-WF-0120'
+    assert r.status_code == 201
 
 
-def test_cycles_are_refused(app, client, chain):
-    """막지 않으면 실행 순서를 정할 수 없다."""
+def test_cycles_are_allowed(app, client, chain):
+    """서로 물고 있어도 이을 수 있다 — 반복 블록이 된다."""
     head, wf = chain['head'], chain['wf']
-    # A(응력검토) → B(응력검토) → A 를 만들어 본다.
+    # A(응력검토) → B(응력검토) → A
     a = _node(client, head, wf['id'], chain['stress_id'])
     b = _node(client, head, wf['id'], chain['stress_id'])
     sig, fin, area = (chain['stress_vars']['sig'], chain['stress_vars']['Fin'],
                       chain['stress_vars']['A'])
 
     assert _link(client, head, wf['id'], a, sig, b, fin).status_code == 201
-    r = _link(client, head, wf['id'], b, sig, a, area)
-    assert r.status_code == 400
-    assert r.get_json()['code'] == 'MD-WF-0126'
+    assert _link(client, head, wf['id'], b, sig, a, area).status_code == 201
 
-    # 실패한 연결은 아무것도 바꾸지 않는다.
     full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
-    assert len(full['links']) == 1
-    assert full['order'] is not None
+    assert len(full['links']) == 2
+
+    # 다른 규칙은 그대로 산다 — 한 입력에는 여전히 하나만.
+    again = _link(client, head, wf['id'], a, sig, b, fin)
+    assert again.status_code == 409
 
 
 def test_a_variable_from_another_card_is_refused(app, client, chain):
@@ -374,45 +382,74 @@ def test_org_posting_reuses_the_card_rules(app, client, chain):
 
 # --- 실행 순서 -------------------------------------------------------------------
 
-def test_execution_order_follows_the_wiring(app, client, chain):
+def test_the_server_hands_over_what_the_order_needs(app, client, chain):
+    """**실행 순서는 서버가 정하지 않는다.**
+
+    순환을 허용한 뒤로 순서는 「서로 물린 것끼리 묶고, 묶음 안에서는 수렴할
+    때까지 돌린다」 는 규칙이 되었다. 그 규칙은 계산기가 안다 — 서버가 같은
+    것을 다른 말로 한 번 더 구현하면 두 벌이 되고, 두 벌은 반드시 어긋난다.
+    그때 새는 쪽은 아무 오류도 내지 않는다.
+
+    서버가 지는 책임은 **순서를 정할 재료를 빠짐없이 넘기는 것**이다.
+    """
     head, wf = chain['head'], chain['wf']
-    # 일부러 응력 노드를 먼저 만든다 — 순서는 만든 차례가 아니라 배선이 정한다.
+    # 일부러 응력 노드를 먼저 만든다 — 만든 차례와 배선은 다르다.
     stress = _node(client, head, wf['id'], chain['stress_id'])
     load = _node(client, head, wf['id'], chain['load_id'])
     _link(client, head, wf['id'], load, chain['load_vars']['F'],
           stress, chain['stress_vars']['Fin'])
 
     full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
-    assert full['order'] == [load['id'], stress['id']]
+    assert 'order' not in full
+    assert {n['id'] for n in full['nodes']} == {load['id'], stress['id']}
+
+    link = full['links'][0]
+    assert link['from_node_id'] == load['id']
+    assert link['to_node_id'] == stress['id']
 
 
-def test_unconnected_nodes_still_get_an_order(app, client, chain):
+def test_iteration_settings_round_trip(app, client, chain):
+    """반복 기준은 워크플로에 저장된다."""
     head, wf = chain['head'], chain['wf']
-    a = _node(client, head, wf['id'], chain['load_id'])
-    b = _node(client, head, wf['id'], chain['stress_id'])
 
-    full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
-    assert sorted(full['order']) == sorted([a['id'], b['id']])
+    body = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    assert body['iter_max'] == 200
+    assert body['iter_relaxation'] == 0.7
+
+    r = client.put(f"/api/workflows/{wf['id']}", headers=head,
+                   json={'iter_max': 200, 'iter_relaxation': 0.3,
+                         'iter_tolerance': 1e-4})
+    assert r.status_code == 200
+
+    body = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    assert body['iter_max'] == 200
+    assert body['iter_relaxation'] == 0.3
+    assert body['iter_tolerance'] == 1e-4
 
 
-def test_order_is_none_when_the_graph_has_a_cycle(app, client, chain):
-    """저장할 때 막지만, DB 를 직접 고친 경우에도 영영 도는 실행보다는 오류가 낫다."""
+def test_iteration_settings_are_bounded(app, client, chain):
+    """오타 하나로 화면이 멎으면 안 된다.
+
+    계산은 브라우저에서 돈다. 반복 한도에 100000 이 들어가면 그 워크플로를 연
+    사람의 화면이 통째로 멈춘다.
+    """
     head, wf = chain['head'], chain['wf']
-    a = _node(client, head, wf['id'], chain['stress_id'])
-    b = _node(client, head, wf['id'], chain['stress_id'])
-    _link(client, head, wf['id'], a, chain['stress_vars']['sig'],
-          b, chain['stress_vars']['Fin'])
 
-    with app.app_context():
-        db.session.add(WorkflowLink(
-            workflow_id=wf['id'],
-            from_node_id=b['id'], from_variable_id=chain['stress_vars']['sig'],
-            to_node_id=a['id'], to_variable_id=chain['stress_vars']['A'],
-        ))
-        db.session.commit()
+    r = client.put(f"/api/workflows/{wf['id']}", headers=head,
+                   json={'iter_max': 100000})
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0131'
 
-    full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
-    assert full['order'] is None
+    # 완화계수 0 은 값이 영영 안 움직여 「수렴」 처럼 보인다 — 더 나쁜 쪽이다.
+    assert client.put(f"/api/workflows/{wf['id']}", headers=head,
+                      json={'iter_relaxation': 0}).status_code == 400
+
+    assert client.put(f"/api/workflows/{wf['id']}", headers=head,
+                      json={'iter_tolerance': 'abc'}).status_code == 400
+
+    # 막힌 뒤에도 원래 값 그대로.
+    body = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    assert body['iter_max'] == 200
 
 
 def test_node_and_link_counts_are_in_the_list(app, client, chain):
@@ -548,7 +585,7 @@ def test_lookup_opens_a_workflow_by_its_route(app, client, chain):
     body = r.get_json()
     assert body['name'] == '브래킷 검토'
     # 편집기가 한 번에 다 그릴 수 있어야 한다.
-    assert 'nodes' in body and 'links' in body and 'order' in body
+    assert 'nodes' in body and 'links' in body
 
 
 def test_lookup_hides_someone_elses_draft(app, client, chain):
@@ -660,11 +697,11 @@ def test_workflow_records_are_filtered_and_searched(app, client, chain):
         'workflow_id': wf['id'], 'title': '표준 조건', 'inputs': {}, 'results': {}})
 
     rows = client.get('/api/records', query_string={'workflow_id': wf['id']},
-                      headers=head).get_json()
+                      headers=head).get_json()['items']
     assert [r['title'] for r in rows] == ['표준 조건']
     # 워크플로 이름으로도 찾힌다 — 카드 이름으로 찾는 것과 같은 자리다.
     rows = client.get('/api/records', query_string={'q': '브래킷'},
-                      headers=head).get_json()
+                      headers=head).get_json()['items']
     assert [r['title'] for r in rows] == ['표준 조건']
 
 
@@ -677,7 +714,49 @@ def test_someone_elses_draft_workflow_record_is_hidden(app, client, chain):
 
     _user(app, 'lee@x.com')
     assert client.get('/api/records',
-                      headers=_login(client, 'lee@x.com')).get_json() == []
+                      headers=_login(client, 'lee@x.com')).get_json()['items'] == []
+
+
+def test_a_record_keeps_how_it_was_iterated(app, client, chain):
+    """**반복 횟수만으로는 아무 말도 못 한다.**
+
+    10회가 좋은 것인지 나쁜 것인지는 그때의 허용오차와 완화계수를 알아야
+    정해진다. 그 값들은 워크플로에 저장되어 있어서 나중에 바뀐다 — 기록을 열었을
+    때 지금 설정으로 읽으면 그 계산서는 거짓말을 하게 된다. 그래서 함께 박아 둔다.
+    """
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+
+    meta = {
+        'loops': [{'node_ids': [1, 2], 'iterations': 10, 'residual': 6.2e-09}],
+        'iteration': {'tolerance': 1e-06, 'max': 200, 'relaxation': 0.7},
+    }
+    made = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '되먹임 검토',
+        'inputs': {}, 'results': {}, 'run_meta': meta}).get_json()
+
+    # 기록한 뒤 기준을 바꿔도 기록은 그때를 말한다.
+    client.put(f"/api/workflows/{wf['id']}", headers=head,
+               json={'iter_relaxation': 0.3, 'iter_max': 20})
+
+    detail = client.get(f"/api/records/{made['id']}", headers=head).get_json()
+    assert detail['run_meta'] == meta
+
+
+def test_a_record_without_iteration_says_nothing(app, client, chain):
+    """반복이 없는 계산에 빈 칸을 만들어 두지 않는다. 없는 것과 0 회는 다르다."""
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+
+    made = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '한 번', 'inputs': {}, 'results': {}}).get_json()
+    assert made['run_meta'] is None
+
+    # 모양을 강요하지 않는다 — 계산 방식이 늘 때마다 서버가 따라 바뀌면 두 벌이 된다.
+    odd = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '이상한 것', 'inputs': {}, 'results': {},
+        'run_meta': 'not-an-object'}).get_json()
+    assert odd['run_meta'] is None
 
 
 def test_a_record_survives_its_workflow(app, client, chain):
