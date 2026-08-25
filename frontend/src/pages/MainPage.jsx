@@ -1102,10 +1102,15 @@ function MainPage() {
             workflows={workflows}
             isTrashView={isTrashView}
             query={query}
-            /* 만들 수 있는 자리는 내 공간뿐이다 — 워크플로도 카드처럼
-               개인 공간에서 태어난다. */
-            canAdd={isPersonalView || isTrashView}
-            onOpen={(wf) => navigate(wf.route)}
+            /* 카드의 '＋ 카드 추가' 와 같은 규칙 — 어느 자리에서 눌러도
+               만들어지는 곳은 내 공간이다. 만드는 자리를 특정 화면에만 두면
+               그 화면을 안 눌러 본 사람은 기능이 있는 줄도 모른다. */
+            canAdd={!isTrashView}
+            /* 편집기는 아직 없다(4단계). 주소로 보내면 빈 화면이 뜨는데,
+               그건 고장으로 읽힌다 — 없는 것은 없다고 말하는 편이 낫다. */
+            onOpen={(wf) => setNotice(
+              `'${wf.name}' — 워크플로 편집기는 아직 준비 중입니다. `
+              + '지금은 만들기·이름·삭제까지만 됩니다.')}
             onAdd={() => setWfForm({ mode: 'create' })}
             onDelete={handleDeleteWorkflow}
             onRestore={handleRestoreWorkflow}

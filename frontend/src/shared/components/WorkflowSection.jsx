@@ -174,9 +174,14 @@ function WorkflowSection({
 }) {
   const [open, setOpen] = useState(true)
 
-  // 조직 화면에서 워크플로가 하나도 없으면 구역째 감춘다. 빈 제목만 남으면
-  // 카드 목록이 아래로 밀려 아무 이득이 없다. 단, 내 공간에서는 만들 자리가
-  // 있어야 하므로 남긴다.
+  // **비어 있어도 구역을 남긴다.**
+  //
+  // 처음에는 조직 화면에서 워크플로가 없으면 통째로 감췄는데, 그러면 워크플로가
+  // 하나도 없는 동안 이 기능이 화면 어디에도 나타나지 않는다 — 만들 자리가
+  // 「내 공간」에만 있어서, 거기를 눌러 본 사람만 기능의 존재를 안다. 탭으로
+  // 나누지 않기로 한 것과 같은 이유로 이것도 틀렸다.
+  //
+  // 카드는 어느 자리에서든 '＋ 카드 추가' 가 보인다. 워크플로도 같아야 한다.
   if (workflows.length === 0 && !canAdd) return null
 
   return (
@@ -191,8 +196,10 @@ function WorkflowSection({
         <>
           {workflows.length === 0 && (
             <Empty>
-              아직 워크플로가 없습니다. 카드 여러 장을 이어 값이 흐르게 하려면
-              여기서 만듭니다.
+              {isTrashView
+                ? '지운 워크플로가 없습니다.'
+                : '카드 여러 장을 이어 값이 흐르게 하려면 워크플로를 만듭니다. '
+                  + '앞 카드의 결과가 뒤 카드의 입력이 되어, 손으로 옮겨 적지 않아도 됩니다.'}
             </Empty>
           )}
 
@@ -222,6 +229,7 @@ function WorkflowSection({
                 {wf.description && <Desc>{wf.description}</Desc>}
                 <Shape>
                   카드 {wf.node_count}장 · 연결 {wf.link_count}개
+                  {wf.node_count === 0 && ' — 아직 비어 있습니다'}
                 </Shape>
 
                 {wf.mounted_orgs?.length > 0 && (
