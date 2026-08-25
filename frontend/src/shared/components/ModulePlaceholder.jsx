@@ -10,7 +10,8 @@ import DoeInputPanel from './DOE/DoeInputPanel'
 import DoeResultsView from './DOE/DoeResultsView'
 import { runFactorial, runLhs, combinationCount, expandRange } from '../utils/doeEngine'
 import { apiFetch } from '../api/client'
-import LoadInputsDialog from './LoadInputsDialog'
+import RecordPicker from './RecordPicker'
+import { mapRecordInputs } from '../utils/loadCardInputs'
 import GoalSeekPanel from './GoalSeekPanel'
 import SensitivityPanel from './SensitivityPanel'
 import { useAuth } from '../auth/AuthContext'
@@ -24,14 +25,14 @@ import { useAuth } from '../auth/AuthContext'
  * 않은 사람에게는 배지가 아예 보이지 않는다.
  */
 const Banner = styled.div`
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 12px 16px;
   margin-bottom: 16px;
   font-size: 0.88rem;
   line-height: 1.55;
-  background: ${p => (p.$warn ? '#fdecea' : '#fff8e1')};
-  border: 1px solid ${p => (p.$warn ? '#f5c6cb' : '#f0d98c')};
-  color: ${p => (p.$warn ? '#a4343a' : '#8a6d1a')};
+  background: ${p => (p.$warn ? 'hsl(var(--danger-soft))' : 'hsl(var(--warn-soft))')};
+  border: 1px solid ${p => (p.$warn ? 'hsl(var(--danger-border))' : 'hsl(var(--warn-border))')};
+  color: ${p => (p.$warn ? 'hsl(var(--danger))' : 'hsl(var(--warn))')};
 `
 
 const BannerTitle = styled.strong`
@@ -55,39 +56,33 @@ const LoadBar = styled.div`
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  background: #f8f9fb;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   padding: 10px 14px;
   margin-top: 16px;
 `
 
 const LoadBtn = styled.button`
   padding: 7px 14px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
-  background: white;
-  color: #4b5563;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
   font-size: 0.83rem;
   cursor: pointer;
   white-space: nowrap;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
-`
-
-const LoadHint = styled.span`
-  font-size: 0.82rem;
-  color: #98a2b3;
-  flex: 1 1 240px;
 `
 
 const LoadMsg = styled.span`
   font-size: 0.82rem;
   flex: 1 1 240px;
-  color: ${p => (p.$warn ? '#a3651b' : '#2f6b3f')};
+  color: ${p => (p.$warn ? 'hsl(var(--warn))' : 'hsl(var(--ok))')};
 `
 
 const SaveBar = styled.div`
@@ -95,75 +90,82 @@ const SaveBar = styled.div`
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  background: #f1f7fd;
-  border: 1px solid #cfe3f7;
-  border-radius: 8px;
+  background: hsl(var(--info-soft));
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
   padding: 12px 14px;
   margin-top: 16px;
 `
 
 const SaveHint = styled.span`
   font-size: 0.85rem;
-  color: #34618c;
+  color: hsl(var(--info));
   flex: 1 1 200px;
 `
 
 const SaveInput = styled.input`
   flex: 2 1 260px;
   padding: 9px 12px;
-  border: 1px solid #cfe3f7;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
 const SaveBtn = styled.button`
   padding: 9px 18px;
-  background: #2980b9;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
 
-  &:hover:not(:disabled) { background: #2471a3; }
-  &:disabled { background: #aab; cursor: not-allowed; }
+  &:hover:not(:disabled) { background: hsl(var(--primary) / 0.8); }
+  &:disabled { background: hsl(var(--border-strong)); cursor: not-allowed; }
 `
 
 const SaveMsg = styled.span`
   font-size: 0.85rem;
   font-weight: 600;
-  color: ${p => (p.$error ? '#a4343a' : '#2f6b34')};
+  color: ${p => (p.$error ? 'hsl(var(--danger))' : 'hsl(var(--ok))')};
   flex-basis: 100%;
+`
+
+/** 계산 방식 탭 + 오른쪽 끝의 도구. 탭만 담을 때는 줄을 다 안 썼다. */
+const ModeRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
 `
 
 const ModeTabs = styled.div`
   display: flex;
   gap: 6px;
-  margin-bottom: 16px;
   padding: 4px;
-  background: #e9ecef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border-radius: var(--radius);
   width: fit-content;
 `
 
 const ModeTab = styled.button`
   padding: 8px 18px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: ${p => p.$active ? 'white' : 'transparent'};
-  color: ${p => p.$active ? '#333' : '#777'};
+  color: ${p => p.$active ? 'hsl(var(--fg))' : 'hsl(var(--fg-subtle))'};
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   box-shadow: ${p => p.$active ? '0 1px 3px rgba(0,0,0,0.12)' : 'none'};
   transition: all 0.15s;
-  &:hover { color: #333; }
+  &:hover { color: hsl(var(--fg)); }
 `
 
 const DoeWrapper = styled.div`
@@ -174,7 +176,7 @@ const DoeWrapper = styled.div`
 
 const DoeSubTabs = styled.div`
   display: flex;
-  border-bottom: 2px solid #e9ecef;
+  border-bottom: 2px solid hsl(var(--surface-2));
 `
 
 const DoeSubTab = styled.button`
@@ -183,45 +185,45 @@ const DoeSubTab = styled.button`
   background: none;
   font-size: 0.95rem;
   font-weight: 500;
-  color: ${p => p.$active ? '#3498db' : '#888'};
-  border-bottom: 2px solid ${p => p.$active ? '#3498db' : 'transparent'};
+  color: ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--fg-subtle))'};
+  border-bottom: 2px solid ${p => p.$active ? 'hsl(var(--primary))' : 'transparent'};
   margin-bottom: -2px;
   cursor: pointer;
-  &:hover { color: #3498db; }
+  &:hover { color: hsl(var(--primary)); }
 `
 
 const RunRow = styled.div`
   display: flex;
   align-items: center;
   gap: 14px;
-  background: white;
+  background: hsl(var(--surface));
   padding: 14px 18px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
 `
 
 const RunBtn = styled.button`
   padding: 10px 22px;
-  background: linear-gradient(135deg, #3498db, #2980b9);
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)));
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  &:hover { background: linear-gradient(135deg, #2980b9, #2471a3); }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.8)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const CountBadge = styled.span`
   font-size: 0.9rem;
-  color: ${p => p.$warn ? '#e67e22' : '#555'};
+  color: ${p => p.$warn ? 'hsl(var(--warn))' : 'hsl(var(--fg-muted))'};
   font-weight: 500;
 `
 
 const WarnMsg = styled.div`
   font-size: 0.8rem;
-  color: #e67e22;
+  color: hsl(var(--warn));
   margin-left: auto;
 `
 
@@ -229,28 +231,28 @@ const MethodBar = styled.div`
   display: flex;
   align-items: center;
   gap: 14px;
-  background: white;
+  background: hsl(var(--surface));
   padding: 12px 18px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
   flex-wrap: wrap;
 `
 
 const MethodToggle = styled.div`
   display: inline-flex;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   overflow: hidden;
 `
 
 const MethodBtn = styled.button`
   padding: 7px 14px;
   font-size: 0.85rem;
-  background: ${p => p.$active ? '#3498db' : 'white'};
-  color: ${p => p.$active ? 'white' : '#666'};
+  background: ${p => p.$active ? 'hsl(var(--primary))' : 'white'};
+  color: ${p => p.$active ? 'white' : 'hsl(var(--fg-muted))'};
   border: none;
   cursor: pointer;
-  &:hover { background: ${p => p.$active ? '#3498db' : '#f0f0f0'}; }
+  &:hover { background: ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--bg))'}; }
 `
 
 const MethodField = styled.label`
@@ -258,22 +260,22 @@ const MethodField = styled.label`
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
-  color: #555;
+  color: hsl(var(--fg-muted));
 `
 
 const SmallNumInput = styled.input`
   width: 80px;
   padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const MethodHint = styled.div`
   font-size: 0.76rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   margin-left: auto;
 `
 
@@ -482,26 +484,12 @@ function ModulePlaceholder({ onGoHome }) {
         onCalculated={handleCalculated}
       />
 
-      {/* 계산 **전에** 보여야 하는 줄이다. 저장 바는 계산 뒤에만 뜨는데,
-          불러오기는 계산하기 전에 쓰는 것이라 같은 자리에 둘 수 없다. */}
-      {!editMode && (
+      {/* 무엇을 채웠고 무엇이 빠졌는지. 단추는 위로 갔지만 이 말은 값 옆에
+          있어야 한다 — 빠진 칸을 찾아보게 만드는 말이라서다. */}
+      {loadMsg && !editMode && (
         <LoadBar>
-          <LoadBtn onClick={() => { setLoadMsg(null); setShowLoadInputs(true) }}>
-            이전 입력 불러오기
-          </LoadBtn>
-          {loadMsg
-            ? <LoadMsg $warn={loadMsg.warn}>{loadMsg.text}</LoadMsg>
-            : <LoadHint>같은 조건으로 다시 계산할 때, 저장해 둔 기록의 입력값을 그대로 가져옵니다.</LoadHint>}
+          <LoadMsg $warn={loadMsg.warn}>{loadMsg.text}</LoadMsg>
         </LoadBar>
-      )}
-
-      {showLoadInputs && card && (
-        <LoadInputsDialog
-          card={card}
-          variables={variables}
-          onLoad={handleLoadInputs}
-          onClose={() => setShowLoadInputs(false)}
-        />
       )}
 
       {lastResults && !editMode && (
@@ -634,12 +622,31 @@ function ModulePlaceholder({ onGoHome }) {
           </Banner>
         )}
 
-        <ModeTabs>
-          <ModeTab $active={mode === 'single'} onClick={() => setMode('single')}>단일 계산</ModeTab>
-          <ModeTab $active={mode === 'doe'} onClick={() => setMode('doe')}>DOE 탐색</ModeTab>
-          <ModeTab $active={mode === 'goal'} onClick={() => setMode('goal')}>역계산</ModeTab>
-          <ModeTab $active={mode === 'sens'} onClick={() => setMode('sens')}>민감도</ModeTab>
-        </ModeTabs>
+        <ModeRow>
+          <ModeTabs>
+            <ModeTab $active={mode === 'single'} onClick={() => setMode('single')}>단일 계산</ModeTab>
+            <ModeTab $active={mode === 'doe'} onClick={() => setMode('doe')}>DOE 탐색</ModeTab>
+            <ModeTab $active={mode === 'goal'} onClick={() => setMode('goal')}>역계산</ModeTab>
+            <ModeTab $active={mode === 'sens'} onClick={() => setMode('sens')}>민감도</ModeTab>
+          </ModeTabs>
+          {/* 불러오기는 **어느 방식에서든** 먼저 하는 일이라 탭 밖에 둔다. */}
+          {!editMode && (
+            <LoadBtn style={{ marginLeft: 'auto' }}
+                     onClick={() => { setLoadMsg(null); setShowLoadInputs(true) }}>
+              이전 입력 불러오기
+            </LoadBtn>
+          )}
+        </ModeRow>
+
+        {showLoadInputs && card && (
+          <RecordPicker
+            query={{ card_id: card.id }}
+            note={<>고른 기록의 <b>입력값만</b> 지금 화면에 채웁니다. 결과는 계산 단추를 눌러 지금 수식으로 다시 냅니다 — 옛 숫자를 그대로 보여 주지 않습니다.</>}
+            onPick={(full) => handleLoadInputs(
+              mapRecordInputs(full, variables), full)}
+            onClose={() => setShowLoadInputs(false)}
+          />
+        )}
 
         {mode === 'single' && renderSingleMode()}
         {mode === 'doe' && renderDoeMode()}

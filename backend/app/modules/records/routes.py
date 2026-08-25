@@ -57,6 +57,17 @@ def _workflow_snapshot(workflow):
     }
 
 
+def _run_meta(raw):
+    """어떻게 돌렸는지. 없으면 없는 대로 둔다.
+
+    **모양을 강요하지 않는다.** 여기 담기는 것은 계산기가 아는 것이고, 계산
+    방식이 늘 때마다 서버가 따라 바뀌면 두 벌이 된다. 객체인지만 본다.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return None
+    return json.dumps(raw, ensure_ascii=False)
+
+
 @records_bp.route('', methods=['POST'])
 def create_record():
     """계산 결과를 남긴다.
@@ -129,6 +140,7 @@ def create_record():
         inputs=json.dumps(inputs, ensure_ascii=False),
         results=json.dumps(results, ensure_ascii=False),
         definition_snapshot=json.dumps(snapshot, ensure_ascii=False),
+        run_meta=_run_meta(data.get('run_meta')),
         created_by_id=actor.id,
     )
     db.session.add(row)
@@ -138,15 +150,32 @@ def create_record():
 
 @records_bp.route('', methods=['GET'])
 def list_records():
-    """기록 목록. 최신순.
+    """기록 목록. 최신순, 페이지로 나눠서.
 
     질의:
-      card_id=3   그 카드의 기록만
-      mine=1      내 기록만
-      q=볼트      이름표·카드 이름에서 찾기
+      card_id=3      그 카드의 기록만
+      workflow_id=5  그 워크플로의 기록만
+      mine=1         내 기록만
+      q=볼트         이름표·카드/워크플로 이름에서 찾기
+      page=2         1부터
+      per_page=20    최대 100
+
+    ## 왜 SQL 로 자르지 않는가
+
+    가시성(초안 카드로 계산한 기록은 남에게 안 보인다)이 **파이썬에서** 결정된다.
+    카드·워크플로의 초안 여부를 봐야 하는데 그건 조인이 필요하다.
+
+    그러면 `LIMIT/OFFSET` 을 SQL 에 맡길 수 없다 — 20개를 떠서 3개를 걸러 내면
+    17개짜리 페이지가 되고, 총 개수도 알 수 없다. **페이지가 들쭉날쭉하고 마지막
+    페이지가 비는 것**이 이 화면에서 가장 나쁜 실패라, 거른 뒤에 자른다.
+
+    대신 두 관계를 미리 함께 읽어(joinedload) 줄마다 다시 묻지 않게 한다.
     """
     actor = current_user()
-    query = CalculationRecord.query
+    query = CalculationRecord.query.options(
+        db.joinedload(CalculationRecord.card),
+        db.joinedload(CalculationRecord.workflow),
+    )
 
     card_id = request.args.get('card_id', type=int)
     if card_id is not None:
@@ -166,14 +195,24 @@ def list_records():
                                     CalculationRecord.card_name.ilike(like),
                                     CalculationRecord.workflow_name.ilike(like)))
 
-    rows = (query.order_by(CalculationRecord.created_at.desc(),
-                           CalculationRecord.id.desc())
-            .limit(PAGE_SIZE * 4).all())
+    rows = query.order_by(CalculationRecord.created_at.desc(),
+                          CalculationRecord.id.desc()).all()
+    visible = [r for r in rows if r.is_visible_to(actor)]
 
-    # 가시성은 파이썬에서 거른다. 초안 여부는 카드 쪽 상태라 SQL 로 표현하려면
-    # 조인이 필요한데, 기록 수가 그 복잡도를 정당화할 만큼 많지 않다.
-    visible = [r for r in rows if r.is_visible_to(actor)][:PAGE_SIZE]
-    return jsonify([r.to_dict() for r in visible])
+    per_page = max(1, min(request.args.get('per_page', type=int) or PAGE_SIZE, 100))
+    pages = max(1, -(-len(visible) // per_page))
+    # 페이지 번호를 있는 범위 안으로 당긴다. 3페이지를 보다가 검색어를 넣어
+    # 결과가 한 페이지로 줄면, 그대로 두면 빈 화면이 나온다.
+    page = min(max(1, request.args.get('page', type=int) or 1), pages)
+
+    start = (page - 1) * per_page
+    return jsonify({
+        'items': [r.to_dict() for r in visible[start:start + per_page]],
+        'total': len(visible),
+        'page': page,
+        'per_page': per_page,
+        'pages': pages,
+    })
 
 
 @records_bp.route('/<int:record_id>', methods=['GET'])

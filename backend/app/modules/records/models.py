@@ -69,6 +69,18 @@ class CalculationRecord(db.Model):
     definition_snapshot = db.Column(db.Text, nullable=False, default='[]')
     """계산 당시의 변수 정의 전부. **이것이 기록을 기록답게 만든다.**"""
 
+    run_meta = db.Column(db.Text, nullable=True)
+    """어떻게 돌려서 나온 값인가.
+
+    지금은 반복 정보다 — 몇 번 돌았고 잔차가 얼마였고 어떤 기준이었는지.
+    **반복 횟수만으로는 아무 말도 못 한다.** 10회가 좋은 것인지 나쁜 것인지는
+    그때의 허용오차와 완화계수를 알아야 정해지고, 그 값들은 나중에 바뀐다.
+
+    정의 스냅샷과 나누어 두는 이유는 성격이 다르기 때문이다. 스냅샷은
+    **무엇을 계산했나**(서버가 뜬다), 이것은 **어떻게 계산했나**(화면이
+    보낸다). 뒤에 다른 종류의 계산이 붙어도 여기에 담으면 된다.
+    """
+
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'),
                               nullable=True)
     created_by = db.relationship('User', foreign_keys=[created_by_id])
@@ -105,18 +117,28 @@ class CalculationRecord(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'created_by_id': self.created_by_id,
             'created_by_name': self.created_by.display_name if self.created_by else None,
+            'run_meta': self._load(self.run_meta, None),
             # 카드가 지워졌는지 화면이 알아야 한다 — '이 카드로 다시 계산하기'
             # 를 띄울 수 있는지가 여기서 갈린다.
             'card_exists': self.card_id is not None,
             'source_exists': (self.workflow_id is not None
                               if (self.kind or 'card') == 'workflow'
                               else self.card_id is not None),
+            # 이름만으로는 못 간다. 같은 이름이 둘일 수 있고, 이름이 바뀌면
+            # 못 찾는다. 살아 있을 때만 주소가 있고, 지워졌으면 None 이라
+            # 화면이 '갈 수 있는가' 를 따로 묻지 않아도 된다.
+            'source_route': self._source_route(),
         }
         if full:
             body['inputs'] = self._load(self.inputs, {})
             body['results'] = self._load(self.results, {})
             body['definition_snapshot'] = self._load(self.definition_snapshot, [])
         return body
+
+    def _source_route(self):
+        if (self.kind or 'card') == 'workflow':
+            return self.workflow.route if self.workflow else None
+        return self.card.route if self.card else None
 
     def is_visible_to(self, user):
         """카드와 같은 규칙을 따른다.

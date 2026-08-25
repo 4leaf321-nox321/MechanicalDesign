@@ -125,6 +125,49 @@ def test_the_snapshot_does_not_follow_later_edits(app, client):
     assert body['results'][str(ids['sig'])]['value'] == 2000
 
 
+def test_a_record_can_get_back_to_its_card(app, client):
+    """**이름만으로는 못 간다.**
+
+    이름이 같은 카드가 둘일 수 있고, 이름이 바뀌면 못 찾는다. 그래서 살아 있는
+    동안은 주소를 함께 준다. 지워졌으면 `None` 이라, 화면이 '갈 수 있는가' 를
+    따로 묻지 않아도 단추를 띄울지 정할 수 있다.
+    """
+    user_id = _user(app)
+    card_id, ids = _card(app, user_id)
+    headers = _login(client)
+    record_id = _save(client, headers, card_id, ids).get_json()['id']
+
+    card = client.get(f'/api/cards/{card_id}', headers=headers).get_json()
+    body = client.get(f'/api/records/{record_id}', headers=headers).get_json()
+    assert body['source_route'] == card['route']
+
+    client.delete(f'/api/cards/{card_id}', headers=headers)
+    client.delete(f'/api/cards/{card_id}/permanent', headers=headers)
+
+    gone = client.get(f'/api/records/{record_id}', headers=headers).get_json()
+    assert gone['source_route'] is None
+
+
+def test_every_row_in_the_list_is_a_record(app, client):
+    """목록의 칸이 통째로 `null` 이 되는 일이 실제로 있었다.
+
+    `to_dict` 가 도중에 끝나면 예외 하나 없이 `None` 이 줄줄이 나온다 — 화면은
+    빈 목록을 그리고, 사람은 기록이 사라진 줄 안다. 값이 틀린 것보다 알아채기
+    어려운 종류라 여기서 막는다.
+    """
+    user_id = _user(app)
+    card_id, ids = _card(app, user_id)
+    headers = _login(client)
+    _save(client, headers, card_id, ids)
+
+    rows = client.get('/api/records', headers=headers).get_json()['items']
+    assert rows, '기록이 하나는 있어야 한다'
+    for row in rows:
+        assert isinstance(row, dict)
+        for key in ('id', 'title', 'kind', 'source_name', 'source_exists'):
+            assert key in row, key
+
+
 def test_the_record_survives_the_card(app, client):
     """카드를 지워도 기록은 남는다 — 기록이 남는 것이 이 표의 존재 이유다."""
     user_id = _user(app)
@@ -193,7 +236,7 @@ def test_list_is_newest_first(app, client):
     for title in ('첫째', '둘째', '셋째'):
         _save(client, headers, card_id, ids, title=title)
 
-    listed = client.get('/api/records', headers=headers).get_json()
+    listed = client.get('/api/records', headers=headers).get_json()['items']
     assert [r['title'] for r in listed] == ['셋째', '둘째', '첫째']
 
 
@@ -204,7 +247,7 @@ def test_list_omits_the_snapshot(app, client):
     headers = _login(client)
     _save(client, headers, card_id, ids)
 
-    listed = client.get('/api/records', headers=headers).get_json()
+    listed = client.get('/api/records', headers=headers).get_json()['items']
     assert 'definition_snapshot' not in listed[0]
 
 
@@ -216,8 +259,69 @@ def test_filter_by_card(app, client):
     _save(client, headers, first, ids_a, title='볼트 기록')
     _save(client, headers, second, ids_b, title='베어링 기록')
 
-    listed = client.get(f'/api/records?card_id={second}', headers=headers).get_json()
+    listed = client.get(f'/api/records?card_id={second}',
+                        headers=headers).get_json()['items']
     assert [r['title'] for r in listed] == ['베어링 기록']
+
+
+def test_the_list_is_paged(app, client):
+    """기록이 쌓이면 한 화면에 다 못 놓는다."""
+    user_id = _user(app)
+    card_id, ids = _card(app, user_id)
+    headers = _login(client)
+    for i in range(7):
+        _save(client, headers, card_id, ids, title=f'검토 {i}')
+
+    first = client.get('/api/records?per_page=3', headers=headers).get_json()
+    assert first['total'] == 7
+    assert first['pages'] == 3
+    assert first['page'] == 1
+    assert len(first['items']) == 3
+
+    last = client.get('/api/records?per_page=3&page=3', headers=headers).get_json()
+    assert len(last['items']) == 1
+
+    # 페이지가 겹치거나 빠지지 않는다.
+    seen = []
+    for page in (1, 2, 3):
+        body = client.get(f'/api/records?per_page=3&page={page}',
+                          headers=headers).get_json()
+        seen += [r['id'] for r in body['items']]
+    assert len(set(seen)) == 7
+
+
+def test_a_page_number_past_the_end_comes_back(app, client):
+    """**빈 화면이 나오면 안 된다.**
+
+    3페이지를 보다가 검색어를 넣어 결과가 한 페이지로 줄면, 페이지 번호는 그대로
+    3이다. 그대로 두면 아무것도 없는 표가 나오고, 사람은 검색이 안 됐다고 여긴다.
+    """
+    user_id = _user(app)
+    card_id, ids = _card(app, user_id)
+    headers = _login(client)
+    for i in range(4):
+        _save(client, headers, card_id, ids, title=f'검토 {i}')
+
+    body = client.get('/api/records?per_page=2&page=99', headers=headers).get_json()
+    assert body['page'] == 2
+    assert len(body['items']) == 2
+
+
+def test_paging_counts_only_what_you_can_see(app, client):
+    """총 개수가 남의 기록까지 세면, 마지막 페이지가 빈다.
+
+    가시성을 걸러 낸 **뒤에** 잘라야 페이지가 들쭉날쭉하지 않다.
+    """
+    owner = _user(app, 'owner@example.com')
+    _user(app, 'other@example.com')
+    card_id, ids = _card(app, owner, status='draft')   # 초안 — 남에게 안 보인다
+    _save(client, _login(client, 'owner@example.com'), card_id, ids)
+
+    body = client.get('/api/records',
+                      headers=_login(client, 'other@example.com')).get_json()
+    assert body['total'] == 0
+    assert body['pages'] == 1
+    assert body['items'] == []
 
 
 def test_filter_mine(app, client):
@@ -228,8 +332,8 @@ def test_filter_mine(app, client):
     _save(client, _login(client, 'other@example.com'), card_id, ids, title='남 기록')
 
     headers = _login(client, 'other@example.com')
-    assert len(client.get('/api/records', headers=headers).get_json()) == 2
-    mine = client.get('/api/records?mine=1', headers=headers).get_json()
+    assert len(client.get('/api/records', headers=headers).get_json()['items']) == 2
+    mine = client.get('/api/records?mine=1', headers=headers).get_json()['items']
     assert [r['title'] for r in mine] == ['남 기록']
 
 
@@ -240,10 +344,10 @@ def test_search_by_title_or_card_name(app, client):
     _save(client, headers, card_id, ids, title='Model X 브래킷')
     _save(client, headers, card_id, ids, title='Model Y 하우징')
 
-    found = client.get('/api/records?q=브래킷', headers=headers).get_json()
+    found = client.get('/api/records?q=브래킷', headers=headers).get_json()['items']
     assert [r['title'] for r in found] == ['Model X 브래킷']
     # 카드 이름으로도 찾힌다 — 사람은 둘 중 기억나는 쪽으로 찾는다.
-    assert len(client.get('/api/records?q=볼트', headers=headers).get_json()) == 2
+    assert len(client.get('/api/records?q=볼트', headers=headers).get_json()['items']) == 2
 
 
 # --- 가시성 --------------------------------------------------------------------
@@ -262,7 +366,7 @@ def test_records_of_a_draft_card_are_hidden(app, client):
                       card_id, ids).get_json()['id']
 
     headers = _login(client, 'other@example.com')
-    assert client.get('/api/records', headers=headers).get_json() == []
+    assert client.get('/api/records', headers=headers).get_json()['items'] == []
     assert client.get(f'/api/records/{record_id}', headers=headers).status_code == 404
 
 
@@ -288,7 +392,8 @@ def test_published_card_records_are_shared(app, client):
     card_id, ids = _card(app, owner)
     _save(client, _login(client, 'owner@example.com'), card_id, ids, title='공유 기록')
 
-    listed = client.get('/api/records', headers=_login(client, 'other@example.com')).get_json()
+    listed = client.get('/api/records',
+                        headers=_login(client, 'other@example.com')).get_json()['items']
     assert [r['title'] for r in listed] == ['공유 기록']
 
 

@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { mapRecordInputs } from '../components/LoadInputsDialog'
+import { mapRecordInputs } from './loadCardInputs'
 
 const VARS = [
   { id: 10, name: '하중', symbol: 'F' },
