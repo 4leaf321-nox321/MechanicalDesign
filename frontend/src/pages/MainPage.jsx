@@ -6,6 +6,7 @@ import { useAuth } from '../shared/auth/AuthContext'
 import OrgTree from '../shared/components/OrgTree'
 import PublishToOrgDialog from '../shared/components/PublishToOrgDialog'
 import { OrgDeleteModal, OrgFormModal } from '../shared/components/OrgModals'
+import WorkflowSection from '../shared/components/WorkflowSection'
 
 /** 휴지통은 조직이 아니지만 트리에서 한 자리를 차지한다. slug 와 겹치지 않는 값. */
 const TRASH = '__trash__'
@@ -613,6 +614,7 @@ function MainPage() {
   const [selected, setSelected] = useState('')
   const [mountTarget, setMountTarget] = useState(null)
   const [trashCount, setTrashCount] = useState(0)
+  const [workflows, setWorkflows] = useState([])
   // 입력 중인 글자와 **실제로 보낸 검색어**를 나눈다. 한 글자마다 요청을
   // 보내면 타이핑이 끊기고, 서버는 버려질 결과를 계속 만든다.
   const [searchInput, setSearchInput] = useState('')
@@ -628,6 +630,7 @@ function MainPage() {
   // 남의 개인 공간 카드가 응답에는 이미 실려 온 뒤라 개발자도구에 그대로 보인다.
   useEffect(() => {
     fetchCards(selected, query)
+    fetchWorkflows(selected, query)
   }, [selected, query])
 
   // 타이핑이 멎으면 그때 보낸다.
@@ -678,9 +681,32 @@ function MainPage() {
     }
   }
 
-  /** 카드 수가 바뀌면 트리의 숫자도 함께 틀어진다. 둘을 같이 새로 받는다. */
+  /**
+   * 워크플로 목록. **카드와 같은 자리를 본다** — 조직 화면에서 묻는 질문은
+   * '여기 뭐가 있나' 이지 '카드가 뭐가 있나' 가 아니다.
+   */
+  const fetchWorkflows = async (org, q = '') => {
+    try {
+      const path = q
+        ? `/workflows?q=${encodeURIComponent(q)}`
+        : org === TRASH
+          ? '/workflows/trash'
+          : org
+            ? `/workflows?org=${encodeURIComponent(org)}`
+            : '/workflows'
+      const res = await apiFetch(path)
+      const data = await res.json()
+      setWorkflows(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Failed to fetch workflows:', err)
+      setWorkflows([])
+    }
+  }
+
+  /** 카드 수가 바뀌면 트리의 숫자도 함께 틀어진다. 셋을 같이 새로 받는다. */
   const refresh = () => {
     fetchCards(selected, query)
+    fetchWorkflows(selected, query)
     fetchTree()
   }
 
@@ -888,6 +914,52 @@ function MainPage() {
     setNotice(`${body.message} 「내 카드」에 초안으로 놓였습니다.`)
   }
 
+  // --- 워크플로 -----------------------------------------------------------
+
+  const [wfForm, setWfForm] = useState(null)
+
+  const submitWorkflow = async (name) => {
+    const res = await apiFetch('/workflows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const message = await errorFrom(res)
+    if (message) return message
+    const wf = await res.json()
+    // 만든 것은 내 공간에 초안으로 놓인다. 조직 화면에 남으면 방금 만든
+    // 것이 어디 갔는지 찾게 된다 — 카드 복제와 같은 이유다.
+    const target = personal ? personal.slug : selected
+    setSelected(target)
+    fetchWorkflows(target, '')
+    fetchTree()
+    setNotice(`'${wf.name}' 워크플로를 만들었습니다. 「내 공간」에 초안으로 놓였습니다.`)
+    return ''
+  }
+
+  const handleDeleteWorkflow = async (wf) => {
+    if (!window.confirm(`'${wf.name}' 을(를) 휴지통으로 옮기시겠습니까?`)) return
+    const res = await apiFetch(`/workflows/${wf.id}`, { method: 'DELETE' })
+    if (!res.ok) { setOrgError(await errorFrom(res)); return }
+    refresh()
+  }
+
+  const handleRestoreWorkflow = async (wf) => {
+    const res = await apiFetch(`/workflows/${wf.id}/restore`, { method: 'POST' })
+    if (!res.ok) { setOrgError(await errorFrom(res)); return }
+    refresh()
+  }
+
+  const handlePurgeWorkflow = async (wf) => {
+    const ask = `'${wf.name}' 을(를) 완전히 삭제합니다.` + '\n\n'
+      + '노드와 연결이 함께 사라지고 되돌릴 수 없습니다. '
+      + '안에 있던 카드 자체는 지워지지 않습니다.'
+    if (!window.confirm(ask)) return
+    const res = await apiFetch(`/workflows/${wf.id}/permanent`, { method: 'DELETE' })
+    if (!res.ok) { setOrgError(await errorFrom(res)); return }
+    refresh()
+  }
+
   const handleRestoreCard = async (e, card) => {
     e.stopPropagation()
     const res = await apiFetch(`/cards/${card.id}/restore`, { method: 'POST' })
@@ -1026,6 +1098,20 @@ function MainPage() {
             </OrgErrorBar>
           )}
 
+          <WorkflowSection
+            workflows={workflows}
+            isTrashView={isTrashView}
+            query={query}
+            /* 만들 수 있는 자리는 내 공간뿐이다 — 워크플로도 카드처럼
+               개인 공간에서 태어난다. */
+            canAdd={isPersonalView || isTrashView}
+            onOpen={(wf) => navigate(wf.route)}
+            onAdd={() => setWfForm({ mode: 'create' })}
+            onDelete={handleDeleteWorkflow}
+            onRestore={handleRestoreWorkflow}
+            onPurge={handlePurgeWorkflow}
+          />
+
           <CardGrid>
         {cards.map((card) => {
           const isDraft = card.status === 'draft'
@@ -1134,6 +1220,15 @@ function MainPage() {
           )}
         </Main>
       </Body>
+
+      {wfForm && (
+        <OrgFormModal
+          mode="create"
+          kind="워크플로"
+          onSubmit={submitWorkflow}
+          onClose={() => setWfForm(null)}
+        />
+      )}
 
       {orgForm && (
         <OrgFormModal

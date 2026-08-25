@@ -92,6 +92,7 @@ def org_tree(include_counts=True):
             .all())
 
     counts = {}
+    wf_counts = {}
     if include_counts:
         # **지운 카드는 세지 않는다.** 게시(card_mounts)는 되살릴 때를 위해
         # 그대로 두므로, 카드를 함께 보지 않으면 휴지통에 있는 카드가 조직
@@ -107,7 +108,21 @@ def org_tree(include_counts=True):
         for slug, n in count_rows:
             counts[slug] = n
 
-    nodes = {r.slug: {**r.to_dict(card_count=counts.get(r.slug, 0)), 'children': []}
+        # 워크플로도 조직에 게시된다. 트리 숫자가 카드만 세면, 워크플로만 있는
+        # 조직이 '0' 으로 보여 아무도 안 눌러 본다.
+        from app.modules.workflows.models import Workflow, WorkflowMount
+
+        wf_rows = (db.session.query(WorkflowMount.org_slug,
+                                    db.func.count(WorkflowMount.workflow_id))
+                   .join(Workflow, Workflow.id == WorkflowMount.workflow_id)
+                   .filter(Workflow.deleted_at.is_(None))
+                   .group_by(WorkflowMount.org_slug).all())
+        for slug, n in wf_rows:
+            wf_counts[slug] = n
+
+    nodes = {r.slug: {**r.to_dict(card_count=counts.get(r.slug, 0)),
+                      'workflow_count': wf_counts.get(r.slug, 0),
+                      'children': []}
              for r in rows}
     roots = []
     for r in rows:
@@ -261,6 +276,16 @@ def delete_org(slug):
     if mounted:
         raise AppError('MD-ORG-0108',
                        f'이 조직에 게시된 카드가 {mounted}개 있습니다. '
+                       f'먼저 게시를 내려 주세요.')
+
+    # 워크플로도 조직에 게시된다. 카드만 보고 지우면 워크플로 게시가 CASCADE 로
+    # 조용히 사라져, "어제까지 팀 게시판에 있던 검토가 오늘 없다" 가 된다.
+    from app.modules.workflows.models import WorkflowMount
+
+    mounted_wf = WorkflowMount.query.filter_by(org_slug=slug).count()
+    if mounted_wf:
+        raise AppError('MD-ORG-0110',
+                       f'이 조직에 게시된 워크플로가 {mounted_wf}개 있습니다. '
                        f'먼저 게시를 내려 주세요.')
 
     db.session.delete(org)

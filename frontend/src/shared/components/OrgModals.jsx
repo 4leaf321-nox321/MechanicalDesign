@@ -148,7 +148,9 @@ function Shell({ onClose, children }) {
  * `parentName` 이 있으면 그 아래에 만드는 중이라는 뜻이다. 어디에 만드는지를
  * 안 보여 주면, 최상위에 만들려다 팀 아래에 만들어 놓고도 모른다.
  */
-export function OrgFormModal({ mode, parentName, initialName = '', onSubmit, onClose }) {
+export function OrgFormModal({
+  mode, parentName, initialName = '', kind = '조직', onSubmit, onClose,
+}) {
   const [name, setName] = useState(initialName)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -165,7 +167,7 @@ export function OrgFormModal({ mode, parentName, initialName = '', onSubmit, onC
     e.preventDefault()
     const value = name.trim()
     if (!value) {
-      setError('조직 이름을 입력해 주세요.')
+      setError(`${kind} 이름을 입력해 주세요.`)
       return
     }
     setBusy(true)
@@ -178,23 +180,25 @@ export function OrgFormModal({ mode, parentName, initialName = '', onSubmit, onC
 
   return (
     <Shell onClose={onClose}>
-      <Title>{editing ? '조직 이름 변경' : '조직 추가'}</Title>
+      <Title>{editing ? `${kind} 이름 변경` : `${kind} 만들기`}</Title>
       <Sub>
         {editing
           ? '이름만 바뀝니다. 주소는 그대로 두므로 저장해 둔 링크가 계속 동작합니다.'
           : parentName
             ? `'${parentName}' 아래에 만듭니다.`
-            : '최상위 조직으로 만듭니다.'}
+            : kind === '조직'
+              ? '최상위 조직으로 만듭니다.'
+              : '내 공간에 초안으로 만들어집니다. 카드를 넣고 이어 붙인 뒤 게시하세요.'}
       </Sub>
 
       <form onSubmit={submit}>
         <Field>
-          <Label>조직 이름</Label>
+          <Label>{kind} 이름</Label>
           <Input
             ref={ref}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="예: 설계1팀"
+            placeholder={kind === '조직' ? '예: 설계1팀' : '예: 감속기 출력축 검토'}
             maxLength={128}
           />
         </Field>

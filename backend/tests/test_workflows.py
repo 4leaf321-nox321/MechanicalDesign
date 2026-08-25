@@ -461,3 +461,77 @@ def test_workflows_live_in_their_own_namespace(app, client, chain):
         wf = db.session.get(Workflow, chain['wf']['id'])
         assert wf.route.startswith('/wf/')
         assert WorkflowNode.query.filter_by(workflow_id=wf.id).count() == 0
+
+
+# --- 목록 화면이 쓰는 것들 -----------------------------------------------------
+
+def test_the_tree_counts_cards_and_workflows_separately(app, client, chain):
+    """워크플로만 있는 조직이 '0' 으로 보이면 아무도 안 눌러 본다."""
+    head, wf = chain['head'], chain['wf']
+    _user(app, 'admin@x.com', admin=True)
+    with app.app_context():
+        team = org_services.create_org('설계1팀').slug
+
+    _node(client, head, wf['id'], chain['load_id'])
+    client.post(f"/api/workflows/{wf['id']}/publish", headers=head)
+    client.post(f"/api/workflows/{wf['id']}/mounts",
+                json={'org_slug': team}, headers=head)
+    client.post(f"/api/cards/{chain['stress_id']}/mounts",
+                json={'org_slug': team}, headers=head)
+
+    node = next(n for n in client.get('/api/orgs/tree', headers=head).get_json()['tree']
+                if n['slug'] == team)
+    assert (node['card_count'], node['workflow_count']) == (1, 1)
+
+
+def test_my_space_counts_both(app, client, chain):
+    head = chain['head']
+    body = client.get('/api/orgs/tree', headers=head).get_json()
+    # 카드 2장(하중·응력)과 워크플로 1개가 개인 공간에 있다.
+    assert body['personal']['card_count'] == 2
+    assert body['personal']['workflow_count'] == 1
+
+
+def test_search_finds_workflows_too(app, client, chain):
+    """검색이 카드와 워크플로로 갈라지면 어느 쪽인지 모르는 사람이 두 번 찾는다."""
+    head, wf = chain['head'], chain['wf']
+    _node(client, head, wf['id'], chain['load_id'])
+    client.post(f"/api/workflows/{wf['id']}/publish", headers=head)
+
+    rows = client.get('/api/workflows', query_string={'q': '브래킷'},
+                      headers=head).get_json()
+    assert [w['name'] for w in rows] == ['브래킷 검토']
+    assert rows[0]['match'] == ['이름']
+
+
+def test_search_finds_my_draft_workflow_but_not_someone_elses(app, client, chain):
+    head = chain['head']
+    _user(app, 'lee@x.com')
+
+    # 초안이어도 내 것은 찾힌다 — 목록에는 안 나오지만.
+    assert len(client.get('/api/workflows', query_string={'q': '브래킷'},
+                          headers=head).get_json()) == 1
+    assert client.get('/api/workflows', query_string={'q': '브래킷'},
+                      headers=_login(client, 'lee@x.com')).get_json() == []
+
+
+def test_an_org_with_a_posted_workflow_is_not_deleted_silently(app, client, chain):
+    """카드만 보고 지우면 워크플로 게시가 CASCADE 로 조용히 사라진다."""
+    head, wf = chain['head'], chain['wf']
+    _user(app, 'admin@x.com', admin=True)
+    admin = _login(client, 'admin@x.com')
+    with app.app_context():
+        team = org_services.create_org('설계1팀').slug
+
+    _node(client, head, wf['id'], chain['load_id'])
+    client.post(f"/api/workflows/{wf['id']}/publish", headers=head)
+    client.post(f"/api/workflows/{wf['id']}/mounts",
+                json={'org_slug': team}, headers=head)
+
+    r = client.delete(f'/api/orgs/{team}', headers=admin)
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-ORG-0110'
+
+    # 내리고 나면 지울 수 있다.
+    client.delete(f"/api/workflows/{wf['id']}/mounts/{team}", headers=head)
+    assert client.delete(f'/api/orgs/{team}', headers=admin).status_code == 200

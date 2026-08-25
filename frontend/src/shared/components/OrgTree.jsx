@@ -134,6 +134,34 @@ const Label = styled.span`
   white-space: nowrap;
 `
 
+/**
+ * 카드 수 · 워크플로 수.
+ *
+ * **합쳐서 하나로 세지 않는다.** 워크플로는 카드를 묶는 상위 개념이라 같은
+ * 단위로 더하면 뜻이 흐려진다 — '14' 만 보고는 카드 12에 워크플로 2인지,
+ * 카드 14인지 알 수 없다. 0 인 쪽은 아예 안 그려 숫자가 늘어지지 않게 한다.
+ */
+function Counts({ cards = 0, workflows = 0 }) {
+  if (!cards && !workflows) return null
+  return (
+    <Count title={`카드 ${cards}장 · 워크플로 ${workflows}개`}>
+      {cards > 0 && cards}
+      {cards > 0 && workflows > 0 && <Dot>·</Dot>}
+      {workflows > 0 && <WfCount>{workflows}</WfCount>}
+    </Count>
+  )
+}
+
+const Dot = styled.span`
+  margin: 0 3px;
+  color: #cbd2dc;
+`
+
+/** 워크플로 쪽은 색을 달리한다 — 두 숫자가 같은 것을 센다고 오해하지 않게. */
+const WfCount = styled.span`
+  color: #6c5ce7;
+`
+
 const Count = styled.span`
   font-size: 0.72rem;
   color: #98a2b3;
@@ -270,7 +298,7 @@ function OrgNode({
         {/* 하위에 걸린 것까지 세지는 않는다. 여기 숫자는 **이 조직에 직접
             게시된 수**다. 합계를 보여 주면 본부를 눌렀을 때 나오는 목록
             길이와 숫자가 달라 보인다. */}
-        {node.card_count > 0 && <Count>{node.card_count}</Count>}
+        <Counts cards={node.card_count} workflows={node.workflow_count} />
         {isAdmin && (
           <Actions className="org-actions">
             <IconBtn title="하위 조직 추가" onClick={(e) => { e.stopPropagation(); onAdd(node.slug) }}>＋</IconBtn>
@@ -380,8 +408,8 @@ function OrgTree({
           title="아직 어디에도 올리지 않은 카드가 여기 있습니다"
         >
           <Caret $has={false} />
-          <Label>내 카드</Label>
-          {personal.card_count > 0 && <Count>{personal.card_count}</Count>}
+          <Label>내 공간</Label>
+          <Counts cards={personal.card_count} workflows={personal.workflow_count} />
         </Row>
       )}
 

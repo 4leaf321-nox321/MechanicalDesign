@@ -33,6 +33,30 @@ def list_workflows():
     actor = current_user()
     query = Workflow.query.filter(Workflow.deleted_at.is_(None))
 
+    keyword = (request.args.get('q') or '').strip()
+    if keyword:
+        # **검색은 자리를 가리지 않는다** — 카드와 같은 판단이다. 검색이 카드와
+        # 워크플로로 갈라지면, 어느 쪽에 있는지 모르는 사람이 두 번 찾게 된다.
+        like = f'%{keyword}%'
+        rows = (query.filter(db.or_(Workflow.status != 'draft',
+                                    Workflow.created_by_id == actor.id))
+                .filter(db.or_(Workflow.name.ilike(like),
+                               Workflow.description.ilike(like)))
+                .order_by(Workflow.sort_order, Workflow.created_at)
+                .limit(200).all())
+        lowered = keyword.lower()
+        out = []
+        for wf in rows:
+            body = wf.to_dict()
+            why = []
+            if lowered in (wf.name or '').lower():
+                why.append('이름')
+            if lowered in (wf.description or '').lower():
+                why.append('설명')
+            body['match'] = why
+            out.append(body)
+        return jsonify(out)
+
     org_slug = (request.args.get('org') or '').strip()
     if org_slug:
         org = db.session.get(Organization, org_slug)

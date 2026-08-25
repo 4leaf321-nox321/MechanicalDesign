@@ -34,9 +34,16 @@ def get_tree():
     personal_count = (db.session.query(db.func.count(Card.id))
                       .filter(Card.home_org_slug == personal.slug,
                               Card.deleted_at.is_(None)).scalar())
+
+    from app.modules.workflows.models import Workflow
+
+    personal_wf = (db.session.query(db.func.count(Workflow.id))
+                   .filter(Workflow.home_org_slug == personal.slug,
+                           Workflow.deleted_at.is_(None)).scalar())
     return jsonify({
         'tree': services.org_tree(),
-        'personal': personal.to_dict(card_count=personal_count),
+        'personal': {**personal.to_dict(card_count=personal_count),
+                     'workflow_count': personal_wf},
     })
 
 
