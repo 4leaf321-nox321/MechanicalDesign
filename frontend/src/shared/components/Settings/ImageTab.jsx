@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import { apiFetch } from '../../api/client'
 import AuthedImage from '../AuthedImage'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
+import { useDialog } from '../Dialog'
 
 
 /**
@@ -137,6 +138,7 @@ const ErrorMsg = styled.p`
 `
 
 function ImageTab({ cardId, images, onRefresh }) {
+  const { confirm } = useDialog()
   const [pendingFile, setPendingFile] = useState(null)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -169,7 +171,13 @@ function ImageTab({ cardId, images, onRefresh }) {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('이 이미지를 삭제하시겠습니까?')) return
+    const ok = await confirm({
+      title: '이 이미지를 삭제합니다',
+      body: '이 이미지를 쓰는 배치에서도 사라집니다.',
+      confirmLabel: '삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       await apiFetch(`/cards/${cardId}/images/${id}`, { method: 'DELETE' })
       onRefresh()

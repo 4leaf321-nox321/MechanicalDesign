@@ -16,6 +16,7 @@ import styled from 'styled-components'
 import { apiFetch } from '../../api/client'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
 import TableGrid from './TableGrid'
+import { useDialog } from '../Dialog'
 
 const Toolbar = styled.div`
   display: flex;
@@ -205,6 +206,7 @@ function parseTable(raw) {
 }
 
 function TableDefinitionTab() {
+  const { confirm, prompt } = useDialog()
   const [tables, setTables] = useState([])
   const [usage, setUsage] = useState({})       // { [id]: 사용하는 변수 목록 }
   const [search, setSearch] = useState('')
@@ -246,7 +248,13 @@ function TableDefinitionTab() {
 
   const create = async () => {
     setMessage(null)
-    const name = window.prompt('새 표의 이름을 입력하세요.\n(예: 재료 물성표, 베어링 규격표)')
+    const name = await prompt({
+      title: '새 표를 만듭니다',
+      body: '여러 카드가 이 표 하나를 참조하게 됩니다.'
+        + '\n표를 고치면 참조하는 곳이 모두 따라옵니다.',
+      placeholder: '예: 재료 물성표, 베어링 규격표',
+      confirmLabel: '만들기',
+    })
     if (name === null) return
     if (!name.trim()) { setMessage({ error: true, text: '표 이름을 입력해주세요.' }); return }
     try {
@@ -282,7 +290,13 @@ function TableDefinitionTab() {
     let n = 2
     while (taken.has(suggested)) { suggested = tpl.name + ' 사본 ' + n; n += 1 }
 
-    const name = window.prompt('복사본의 이름을 입력하세요.', suggested)
+    const name = await prompt({
+      title: '표를 복사합니다',
+      body: '복사본은 원본과 이어지지 않습니다 —'
+        + ' 원본을 고쳐도 따라오지 않습니다.',
+      initial: suggested,
+      confirmLabel: '복사',
+    })
     if (name === null) return
     const trimmed = name.trim()
     if (!trimmed) { setMessage({ error: true, text: '표 이름을 입력해주세요.' }); return }
@@ -313,10 +327,13 @@ function TableDefinitionTab() {
     const users = usage[tpl.id] || []
     if (users.length > 0) {
       // 참조는 편한 만큼 사고도 멀리 퍼진다. 몇 군데가 함께 바뀌는지 먼저 알린다.
-      if (!window.confirm(
-        `이 표를 참조하는 변수가 ${users.length}개 있습니다.\n` +
-        '저장하면 그 변수들의 계산 결과도 함께 바뀝니다. 계속할까요?'
-      )) return
+      const ok = await confirm({
+        title: `이 표를 참조하는 변수가 ${users.length}개 있습니다`,
+        body: '저장하면 그 변수들의 계산 결과도 함께 바뀝니다.',
+        confirmLabel: '저장',
+        tone: 'danger',
+      })
+      if (!ok) return
     }
     setSaving(true)
     setMessage(null)
@@ -347,7 +364,13 @@ function TableDefinitionTab() {
   const remove = async (e, tpl) => {
     e.stopPropagation()
     setMessage(null)
-    if (!window.confirm(`표 "${tpl.name}" 을(를) 삭제할까요?`)) return
+    const ok = await confirm({
+      title: `표 '${tpl.name}' 을(를) 삭제합니다`,
+      body: '이 표를 참조하는 변수는 참조가 끊깁니다.',
+      confirmLabel: '삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       const res = await apiFetch(`/templates/${tpl.id}`, { method: 'DELETE' })
       if (!res.ok) {

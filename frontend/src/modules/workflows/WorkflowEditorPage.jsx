@@ -20,6 +20,7 @@ import { STATUS, runWorkflow, terminalNodes } from '../../shared/utils/workflowE
 import { executionBlocks } from '../../shared/utils/scc'
 import { fmt } from '../../shared/utils/goalSeek'
 import AppHeader, { BarButton } from '../../shared/components/AppHeader'
+import { useDialog } from '../../shared/components/Dialog'
 import RecordPicker from '../../shared/components/RecordPicker'
 import { describeLoad, mapWorkflowInputs } from './loadWorkflowInputs'
 import WorkflowCanvas from './WorkflowCanvas'
@@ -28,6 +29,7 @@ import * as S from './editorStyles'
 function WorkflowEditorPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { confirm, prompt } = useDialog()
 
   const [workflow, setWorkflow] = useState(null)
   const [cardVariables, setCardVariables] = useState({})
@@ -189,9 +191,16 @@ function WorkflowEditorPage() {
   const removeNode = useCallback(async (node) => {
     const linked = (workflow?.links || []).filter(
       l => l.from_node_id === node.id || l.to_node_id === node.id).length
-    const ask = `'${node.alias}' 를 빼시겠습니까?`
-      + (linked ? `\n\n이 노드에 닿은 연결 ${linked}개도 함께 끊깁니다.` : '')
-    if (!window.confirm(ask)) return
+    const ok = await confirm({
+      title: `'${node.alias}' 를 뺍니다`,
+      body: linked
+        ? `이 카드에 닿은 연결 ${linked}개도 함께 끊깁니다.`
+          + '\n입력값도 사라지고, 되돌릴 수 없습니다.'
+        : '입력값도 함께 사라지고, 되돌릴 수 없습니다.',
+      confirmLabel: '빼기',
+      tone: 'danger',
+    })
+    if (!ok) return
 
     setError('')
     const res = await apiFetch(`/workflows/${wfId}/nodes/${node.id}`,
@@ -202,7 +211,7 @@ function WorkflowEditorPage() {
       return
     }
     await load()
-  }, [workflow?.links, wfId, load])
+  }, [workflow?.links, wfId, load, confirm])
 
   /**
    * 입력 하나를 저장한다. 순서도와 표가 **같은 길**을 쓴다.
@@ -390,9 +399,12 @@ function WorkflowEditorPage() {
   }
 
   const publish = async () => {
-    const ok = window.confirm(
-      `'${workflow.name}' 을(를) 게시합니다.\n\n`
-      + '게시하면 조직에 올릴 수 있게 됩니다. 검증에 오류가 없는지 확인하셨나요?')
+    const ok = await confirm({
+      title: `'${workflow.name}' 을(를) 게시합니다`,
+      body: '게시하면 조직에 올릴 수 있게 됩니다.'
+        + '\n검증에 오류가 없는지 확인하셨나요?',
+      confirmLabel: '게시하기',
+    })
     if (!ok) return
     const body = await call(`/workflows/${workflow.id}/publish`, { method: 'POST' })
     if (body) setNotice('게시했습니다.')

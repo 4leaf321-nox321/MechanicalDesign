@@ -13,6 +13,7 @@ import styled from 'styled-components'
 
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useDialog } from './Dialog'
 
 const Overlay = styled.div`
   position: fixed;
@@ -178,6 +179,7 @@ function formatWhen(iso) {
 }
 
 export default function HistoryPanel({ cardId, cardName, canRestore, onClose, onRestored }) {
+  const { confirm } = useDialog()
   const { user } = useAuth()
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -199,11 +201,12 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
   useEffect(() => { load() }, [load])
 
   const handleRestore = async (entry) => {
-    const ok = window.confirm(
-      `${formatWhen(entry.created_at)} 시점의 정의로 되돌립니다.\n\n` +
-        '그 뒤에 바뀐 수식·변수는 모두 그때 상태로 돌아갑니다.\n' +
-        '되돌린 것도 이력에 남으므로 다시 앞으로 돌아올 수는 있습니다.',
-    )
+    const ok = await confirm({
+      title: `${formatWhen(entry.created_at)} 시점으로 되돌립니다`,
+      body: '그 뒤에 바뀐 수식·변수는 모두 그때 상태로 돌아갑니다.'
+        + '\n되돌린 것도 이력에 남으므로 다시 앞으로 돌아올 수 있습니다.',
+      confirmLabel: '되돌리기',
+    })
     if (!ok) return
     setBusy(true)
     setError('')

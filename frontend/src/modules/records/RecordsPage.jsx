@@ -13,6 +13,7 @@ import AppHeader, { BarButton } from '../../shared/components/AppHeader'
 
 import { api } from '../../shared/api/client'
 import { useAuth } from '../../shared/auth/AuthContext'
+import { useDialog } from '../../shared/components/Dialog'
 import {
   Body, Empty, ErrorBox, Page, Panel, Table, Td, Th,
 } from './recordStyles'
@@ -148,6 +149,7 @@ function formatWhen(iso) {
 
 export default function RecordsPage() {
   const navigate = useNavigate()
+  const { confirm } = useDialog()
   const { user } = useAuth()
 
   const [body, setBody] = useState(null)
@@ -194,10 +196,13 @@ export default function RecordsPage() {
 
   const handleDelete = async (event, record) => {
     event.stopPropagation()
-    const ok = window.confirm(
-      `'${record.title}' 기록을 지웁니다.\n\n` +
-        '그때의 입력값·결과·계산 정의가 함께 사라집니다. 되돌릴 수 없습니다.',
-    )
+    const ok = await confirm({
+      title: `'${record.title}' 기록을 지웁니다`,
+      body: '그때의 입력값·결과·계산 정의가 함께 사라집니다.'
+        + '\n되돌릴 수 없습니다.',
+      confirmLabel: '지우기',
+      tone: 'danger',
+    })
     if (!ok) return
     try {
       await api.del(`/records/${record.id}`)

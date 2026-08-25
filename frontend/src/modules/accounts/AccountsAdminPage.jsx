@@ -13,6 +13,7 @@ import AppHeader from '../../shared/components/AppHeader'
 
 import { api } from '../../shared/api/client'
 import { useAuth } from '../../shared/auth/AuthContext'
+import { useDialog } from '../../shared/components/Dialog'
 
 const STATUS_LABEL = {
   pending: '승인 대기',
@@ -250,6 +251,7 @@ const ModalActions = styled.div`
 export function AccountsAdminPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { confirm, prompt } = useDialog()
 
   const [filter, setFilter] = useState('')
   const [accounts, setAccounts] = useState([])
@@ -301,8 +303,14 @@ export function AccountsAdminPage() {
       return `${row.display_name} 님을 승인했습니다.`
     })
 
-  const reject = (row) => {
-    const note = window.prompt(`${row.display_name} 님의 신청을 거절합니다.\n사유를 적어 주세요 (본인에게 보이지는 않습니다).`)
+  const reject = async (row) => {
+    const note = await prompt({
+      title: `${row.display_name} 님의 신청을 거절합니다`,
+      body: '사유를 적어 주세요. 본인에게는 보이지 않습니다.',
+      placeholder: '예: 사내 인원이 아님',
+      confirmLabel: '거절',
+      tone: 'danger',
+    })
     if (note === null) return
     run(async () => {
       await api.post(`/accounts/${row.id}/reject`, { note })
@@ -326,8 +334,14 @@ export function AccountsAdminPage() {
         : `${row.display_name} 님에게 관리자 권한을 주었습니다.`
     })
 
-  const resetPassword = (row) => {
-    if (!window.confirm(`${row.display_name} 님의 비밀번호를 재설정합니다.\n진행 중이던 세션이 모두 끊깁니다. 계속할까요?`)) return
+  const resetPassword = async (row) => {
+    const ok = await confirm({
+      title: `${row.display_name} 님의 비밀번호를 재설정합니다`,
+      body: '진행 중이던 세션이 모두 끊깁니다.',
+      confirmLabel: '재설정',
+      tone: 'danger',
+    })
+    if (!ok) return
     run(async () => {
       const body = await api.post(`/accounts/${row.id}/reset-password`)
       return {
@@ -337,8 +351,15 @@ export function AccountsAdminPage() {
     })
   }
 
-  const remove = (row) => {
-    if (!window.confirm(`${row.display_name} 님의 계정을 삭제합니다.\n로그인은 막히지만 이 사람이 만든 카드의 기록은 남습니다. 계속할까요?`)) return
+  const remove = async (row) => {
+    const ok = await confirm({
+      title: `${row.display_name} 님의 계정을 삭제합니다`,
+      body: '로그인이 막힙니다.'
+        + '\n이 사람이 만든 카드와 계산 기록은 그대로 남습니다.',
+      confirmLabel: '삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     run(async () => {
       await api.del(`/accounts/${row.id}`)
       return `${row.display_name} 님의 계정을 삭제했습니다.`

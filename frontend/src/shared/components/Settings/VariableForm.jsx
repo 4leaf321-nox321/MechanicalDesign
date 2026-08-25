@@ -5,6 +5,7 @@ import { apiFetch } from '../../api/client'
 import { flattenClipboardCells } from '../../utils/clipboard'
 import { MATCH_MODE_LABEL, describeRange, parseRangeHeader } from '../../utils/tableLookup'
 import TableGrid, { shiftColumnIndex } from './TableGrid'
+import { useDialog } from '../Dialog'
 
 
 // ============================================
@@ -833,6 +834,7 @@ function RangePreview({ show, headers }) {
 // Table editor sub-component
 // ============================================
 function TableEditor({ value, onChange, availableSymbols }) {
+  const { confirm } = useDialog()
   const data = value
 
   const lookupMode = data.lookup_mode || 'row'
@@ -882,10 +884,13 @@ function TableEditor({ value, onChange, availableSymbols }) {
         setUsage(body.users.length)
         if (body.users.length > 1) {
           const others = body.users.length - 1
-          if (!window.confirm(
-            `이 표는 다른 변수 ${others}개도 함께 쓰고 있습니다.` +
-            '\n여기서 고치면 그 변수들의 계산 결과도 함께 바뀝니다. 계속할까요?'
-          )) return
+          const ok = await confirm({
+            title: `다른 변수 ${others}개도 이 표를 씁니다`,
+            body: '여기서 고치면 그 변수들의 계산 결과도 함께 바뀝니다.',
+            confirmLabel: '고치기',
+            tone: 'danger',
+          })
+          if (!ok) return
         }
       }
     } catch { /* 사용처를 못 읽어도 편집 자체는 막지 않는다 */ }
@@ -911,11 +916,14 @@ function TableEditor({ value, onChange, availableSymbols }) {
     }
   }
 
-  const detach = () => {
-    if (!window.confirm(
-      '참조를 풀고 지금 내용을 이 변수만의 복사본으로 만듭니다.' +
-      '\n이후에는 원본을 고쳐도 여기에 반영되지 않습니다. 계속할까요?'
-    )) return
+  const detach = async () => {
+    const ok = await confirm({
+      title: '참조를 풉니다',
+      body: '지금 내용을 이 변수만의 복사본으로 만듭니다.'
+        + '\n이후에는 원본을 고쳐도 여기에 반영되지 않습니다.',
+      confirmLabel: '참조 풀기',
+    })
+    if (!ok) return
     const { source_template_id, source_name, source_error, ...rest } = data
     onChange(rest)
   }
@@ -1400,6 +1408,7 @@ function formatDate(iso) {
 }
 
 function TemplateModal({ varType, getCurrentData, onLoad, onReference, onClose, initialMode = 'load' }) {
+  const { confirm } = useDialog()
   // 'reference' 는 표를 **연결**한다(원본을 고치면 따라 바뀐다).
   // 'load' 는 내용을 복사해 온다(이후 원본과 무관해진다).
   const isReferenceMode = initialMode === 'reference'
@@ -1471,7 +1480,13 @@ function TemplateModal({ varType, getCurrentData, onLoad, onReference, onClose, 
 
   const handleDelete = async (e, tpl) => {
     e.stopPropagation()
-    if (!window.confirm(`템플릿 "${tpl.name}"을(를) 삭제할까요?`)) return
+    const ok = await confirm({
+      title: `템플릿 '${tpl.name}' 을(를) 삭제합니다`,
+      body: '이 템플릿을 참조하는 변수는 참조가 끊깁니다.',
+      confirmLabel: '삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     setDeleteError('')
     try {
       const res = await apiFetch(`/templates/${tpl.id}`, { method: 'DELETE' })

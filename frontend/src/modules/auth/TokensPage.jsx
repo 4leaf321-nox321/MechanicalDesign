@@ -17,6 +17,7 @@ import AppHeader from '../../shared/components/AppHeader'
 
 import { api } from '../../shared/api/client'
 import { useAuth } from '../../shared/auth/AuthContext'
+import { useDialog } from '../../shared/components/Dialog'
 
 const STATE_LABEL = { active: '사용 중', expired: '만료됨', revoked: '폐기됨' }
 const STATE_COLOR = { active: 'hsl(var(--ok))', expired: 'hsl(var(--warn))', revoked: 'hsl(var(--danger))' }
@@ -293,6 +294,7 @@ function formatDate(iso) {
 
 export default function TokensPage() {
   const navigate = useNavigate()
+  const { confirm } = useDialog()
   const { user } = useAuth()
 
   const [list, setList] = useState([])
@@ -370,10 +372,13 @@ export default function TokensPage() {
   const handleCopy = () => copyText(issued, setCopied)
 
   const handleRevoke = async (token) => {
-    const ok = window.confirm(
-      `'${token.name}' 토큰을 폐기합니다.\n\n` +
-        '이 토큰을 쓰는 MCP·스크립트는 즉시 붙지 못하게 됩니다. 되돌릴 수 없습니다.',
-    )
+    const ok = await confirm({
+      title: `'${token.name}' 토큰을 폐기합니다`,
+      body: '이 토큰을 쓰는 MCP·스크립트가 즉시 붙지 못하게 됩니다.'
+        + '\n되돌릴 수 없습니다.',
+      confirmLabel: '폐기',
+      tone: 'danger',
+    })
     if (!ok) return
     try {
       await api.del(`/auth/me/tokens/${token.id}`)

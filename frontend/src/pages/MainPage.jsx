@@ -13,6 +13,7 @@ import WorkflowSection from '../shared/components/WorkflowSection'
 import { TRASH } from '../shared/components/AppShell'
 // 워크플로 만들기도 같은 창을 쓴다 — 이름 하나 받는 일은 같다.
 import { OrgFormModal } from '../shared/components/OrgModals'
+import { useDialog } from '../shared/components/Dialog'
 
 
 // ============================================
@@ -568,6 +569,7 @@ const ErrorMsg = styled.p`
 // ============================================
 function MainPage() {
   const navigate = useNavigate()
+  const { alert, confirm } = useDialog()
   const { user, logout } = useAuth()
   const [cards, setCards] = useState([])
   const [showModal, setShowModal] = useState(false)
@@ -689,11 +691,14 @@ function MainPage() {
    */
   const handlePublish = async (e, card) => {
     e.stopPropagation()
-    const ok = window.confirm(
-      `'${card.name}' 를 게시합니다.\n\n` +
-        '이 카드가 모든 사용자에게 보이고, 사람들이 이 계산으로 설계 판단을 하게 됩니다.\n' +
-        '열어서 숫자를 확인해 보셨나요? 계산이 돈다는 것과 값이 맞다는 것은 다릅니다.',
-    )
+    const ok = await confirm({
+      title: `'${card.name}' 를 게시합니다`,
+      body: '이 카드가 모든 사용자에게 보이고, 사람들이 이 계산으로 설계'
+        + ' 판단을 하게 됩니다.'
+        + '\n\n열어서 숫자를 확인해 보셨나요?'
+        + ' 계산이 돈다는 것과 값이 맞다는 것은 다릅니다.',
+      confirmLabel: '게시하기',
+    })
     if (!ok) return
 
     try {
@@ -706,12 +711,15 @@ function MainPage() {
         const detail = issues.length
           ? '\n\n' + issues.map(i => `· ${i.symbol || i.variable_name || ''} ${i.message}`).join('\n')
           : ''
-        window.alert((body.error || '게시하지 못했습니다.') + detail)
+        await alert({
+          title: '게시하지 못했습니다',
+          body: (body.error || '') + detail,
+        })
         return
       }
       await fetchCards()
     } catch (err) {
-      window.alert('게시하지 못했습니다: ' + err.message)
+      await alert({ title: '게시하지 못했습니다', body: err.message })
     }
   }
 
@@ -761,9 +769,12 @@ function MainPage() {
   /** 휴지통으로 보낸다. 아직 지워지지 않으므로 무겁게 묻지 않는다. */
   const handleDeleteCard = async (e, cardId) => {
     e.stopPropagation()
-    const ask = '이 카드를 휴지통으로 옮기시겠습니까?' + '\n\n' +
-      '휴지통에서 되살릴 수 있습니다.'
-    if (!window.confirm(ask)) return
+    const ok = await confirm({
+      title: '이 카드를 휴지통으로 옮깁니다',
+      body: '휴지통에서 되살릴 수 있습니다.',
+      confirmLabel: '휴지통으로',
+    })
+    if (!ok) return
     try {
       const res = await apiFetch(`/cards/${cardId}`, { method: 'DELETE' })
       if (res.ok) refresh()
@@ -822,7 +833,13 @@ function MainPage() {
   }
 
   const handleDeleteWorkflow = async (wf) => {
-    if (!window.confirm(`'${wf.name}' 을(를) 휴지통으로 옮기시겠습니까?`)) return
+    const ok = await confirm({
+      title: `'${wf.name}' 을(를) 휴지통으로 옮깁니다`,
+      body: '휴지통에서 되살릴 수 있습니다.'
+        + '\n안에 있던 카드 자체는 그대로 있습니다.',
+      confirmLabel: '휴지통으로',
+    })
+    if (!ok) return
     const res = await apiFetch(`/workflows/${wf.id}`, { method: 'DELETE' })
     if (!res.ok) { setOrgError(await errorFrom(res)); return }
     refresh()
@@ -835,10 +852,14 @@ function MainPage() {
   }
 
   const handlePurgeWorkflow = async (wf) => {
-    const ask = `'${wf.name}' 을(를) 완전히 삭제합니다.` + '\n\n'
-      + '노드와 연결이 함께 사라지고 되돌릴 수 없습니다. '
-      + '안에 있던 카드 자체는 지워지지 않습니다.'
-    if (!window.confirm(ask)) return
+    const ok = await confirm({
+      title: `'${wf.name}' 을(를) 완전히 삭제합니다`,
+      body: '노드와 연결이 함께 사라지고 되돌릴 수 없습니다.'
+        + '\n안에 있던 카드 자체는 지워지지 않습니다.',
+      confirmLabel: '완전 삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     const res = await apiFetch(`/workflows/${wf.id}/permanent`, { method: 'DELETE' })
     if (!res.ok) { setOrgError(await errorFrom(res)); return }
     refresh()
@@ -862,10 +883,15 @@ function MainPage() {
    */
   const handlePurgeCard = async (e, card) => {
     e.stopPropagation()
-    const ask = `'${card.name}' 를 완전히 삭제합니다.` + '\n\n' +
-      '변수·컨테이너·이미지·변경 이력이 함께 사라지고 되돌릴 수 없습니다.' + '\n' +
-      '이 카드로 계산한 기록은 남지만, 카드와의 연결은 끊어집니다.'
-    if (!window.confirm(ask)) return
+    const ok = await confirm({
+      title: `'${card.name}' 를 완전히 삭제합니다`,
+      body: '변수·컨테이너·이미지·변경 이력이 함께 사라지고'
+        + ' 되돌릴 수 없습니다.'
+        + '\n이 카드로 계산한 기록은 남지만, 카드와의 연결은 끊어집니다.',
+      confirmLabel: '완전 삭제',
+      tone: 'danger',
+    })
+    if (!ok) return
     const res = await apiFetch(`/cards/${card.id}/permanent`, { method: 'DELETE' })
     if (!res.ok) {
       setOrgError(await errorFrom(res))

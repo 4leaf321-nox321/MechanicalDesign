@@ -4,6 +4,7 @@ import MainPage from './pages/MainPage'
 import ModulePlaceholder from './shared/components/ModulePlaceholder'
 import { AuthProvider } from './shared/auth/AuthContext'
 import { ThemeProvider } from './shared/theme/ThemeContext'
+import { DialogProvider } from './shared/components/Dialog'
 import ProtectedRoute from './shared/auth/ProtectedRoute'
 import AppShell from './shared/components/AppShell'
 import LoginPage from './modules/auth/LoginPage'
@@ -67,11 +68,15 @@ function App() {
   // 판(밝음·어두움)은 로그인 화면에도 있어야 한다. 그래서 제일 바깥이다.
   return (
     <ThemeProvider>
+      {/* 묻는 창은 어느 화면에서도 뜬다. 라우터 바깥이면 창 안에서 화면을
+          옮길 수 없으니 안쪽에 두되, 화면들보다는 위에 둔다. */}
       <Router>
         {/* Router 안쪽에 둔다. 세션이 끊겼을 때 로그인 화면으로 보내려면
             AuthProvider 가 라우터 컨텍스트 안에 있어야 한다. */}
         <AuthProvider>
-          <AppRoutes />
+          <DialogProvider>
+            <AppRoutes />
+          </DialogProvider>
         </AuthProvider>
       </Router>
     </ThemeProvider>
