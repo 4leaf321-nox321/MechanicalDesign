@@ -25,7 +25,9 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import styled from 'styled-components'
-import { STATUS, terminalNodes } from '../../shared/utils/workflowEngine'
+import { STATUS, slot, terminalNodes } from '../../shared/utils/workflowEngine'
+import { workflowInterface } from '../../shared/utils/workflowInterface'
+import { handleAt, nestedIds, parseSlot } from '../../shared/utils/slots'
 import { executionBlocks } from '../../shared/utils/scc'
 import { fmt } from '../../shared/utils/goalSeek'
 import { edgeFlow } from './edgeFlow'
@@ -44,6 +46,9 @@ const PICKED = 'hsl(var(--danger))'
  * 통째로 바꾼다 — 돌고 있다면 그 값들은 수렴한 값이지 한 번 계산한 값이 아니다.
  */
 const LOOP = 'hsl(var(--warn))'
+
+/** 카드 자리는 얼굴이 없다. 밖에 두어야 그릴 때마다 새 객체가 안 생긴다. */
+const EMPTY_FACE = { inputs: [], outputs: [] }
 
 /** SVG 속성으로 넘길 색들. 이름을 밖에 두어야 훅이 매번 새로 안 만든다. */
 const PAINTED = ['border', 'accent', 'fg-subtle', 'warn']
@@ -211,6 +216,52 @@ const CardName = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+`
+
+/**
+ * 워크플로가 놓인 자리.
+ *
+ * 뒤에 한 겹 깔린 그림자로 「이 안에 또 있다」 를 말한다. 태그 글자로만 구분하면
+ * 그림을 멀리서 훑을 때 카드와 똑같이 보인다.
+ */
+const Nest = styled(Box)`
+  box-shadow: ${p => (p.$picked
+    ? '0 0 0 3px hsl(var(--accent) / 0.35), 0 4px 14px rgba(0, 0, 0, 0.14)'
+    : `5px 5px 0 -1px hsl(var(--surface)), 6px 6px 0 -1px ${p.$tone},`
+      + ' 0 2px 8px rgba(0, 0, 0, 0.08)')};
+`
+
+const SubName = styled.button`
+  display: block;
+  width: 100%;
+  padding: 0 12px 8px;
+  border: none;
+  border-bottom: 1px solid hsl(var(--border));
+  background: none;
+  text-align: left;
+  color: hsl(var(--accent));
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`
+
+/** 안쪽 어느 카드의 칸인가. 이름이 겹칠 때 이것이 유일한 구분이다. */
+const Where = styled.span`
+  color: hsl(var(--fg-subtle));
+  font-size: 0.66rem;
+  margin-right: 4px;
+
+  &::after {
+    content: '·';
+    margin-left: 4px;
+  }
 `
 
 const Group = styled.div`
@@ -445,8 +496,114 @@ function GroupBox({ data }) {
   )
 }
 
+/**
+ * 자리에 놓인 워크플로.
+ *
+ * 카드와 **다르게 생겨야 한다.** 같게 그리면 그림만 보고 이 자리가 카드 한 장인지
+ * 워크플로 통째인지 알 수 없고, 그 차이가 「고치러 어디를 열어야 하는가」 를
+ * 통째로 바꾼다.
+ *
+ * 손잡이는 **얼굴**이다 — 안쪽의 빈 입력과 결론 결과. 안쪽 중간값은 손잡이가
+ * 아예 없어서 이으려야 이을 수가 없다.
+ */
+function NestedNode({ data, selected }) {
+  const {
+    alias, subName, subDeleted, face, links,
+    stored, result, isTerminal, inLoop, onInput, onRemove, onOpen,
+  } = data
 
-const nodeTypes = { card: CardNode, groupBox: GroupBox }
+  const status = result?.status || STATUS.ok
+  const blocked = status === STATUS.blocked
+  const tone = subDeleted ? TONE[STATUS.failed] : TONE[status]
+
+  return (
+    <Nest $tone={tone} $picked={selected} $dim={blocked}>
+      <BoxHead>
+        <Alias>{alias}</Alias>
+        {inLoop && (
+          <Tag $loop title={result?.loop?.converged
+            ? `${result.loop.iterations}번 돌려 수렴했습니다`
+            : '수렴할 때까지 돌립니다'}>
+            ↺ {result?.loop?.converged ? `${result.loop.iterations}회` : '반복'}
+          </Tag>
+        )}
+        {isTerminal && <Tag>결론</Tag>}
+        <Drop className="nodrag" title="이 워크플로를 뺍니다"
+              onClick={onRemove}>✕</Drop>
+      </BoxHead>
+      {/* 안은 여기서 못 고친다. 그 워크플로를 열어야 한다는 것을, 이름이
+          눌린다는 것으로 알린다. */}
+      <SubName className="nodrag" onClick={onOpen}
+               title="이 워크플로를 열어 안을 고칩니다">
+        ▣ {subDeleted ? '워크플로가 휴지통에 있습니다' : subName}
+      </SubName>
+
+      <Group>
+        <GroupLabel>입력</GroupLabel>
+        {face.inputs.length === 0 && <Empty>없음</Empty>}
+        {face.inputs.map(v => {
+          const key = slot(v.nodeId, v.variableId)
+          const link = links.get(key)
+          return (
+            <Row key={key} $linked={!!link}>
+              <Handle type="target" position={Position.Left} id={key} />
+              {/* 어느 카드의 칸인지까지 적어 준다. 「하중 (F)」 만 있으면
+                  안에 같은 이름이 셋일 때 어느 것인지 알 수 없다. */}
+              <Name title={[...v.path, v.label].join(' / ')}>
+                <Where>{v.path[v.path.length - 1]}</Where>
+                {v.label}
+                {v.unit && <Unit>{v.unit}</Unit>}
+              </Name>
+              {link && !link.feedback ? (
+                <FromLink title={`${link.fromAlias}.${link.from_label}`}>
+                  ← {link.fromAlias}
+                </FromLink>
+              ) : (
+                <>
+                  {link?.feedback && (
+                    <Seed title={`'${link.fromAlias}' 에서 되돌아오는 값입니다.`
+                      + ' 여기 적는 숫자는 고리를 시작할 추정값입니다.'}>↺ 초기값</Seed>
+                  )}
+                  <ValueField value={stored[key]}
+                              onCommit={(next) => onInput(key, next)} />
+                </>
+              )}
+            </Row>
+          )
+        })}
+      </Group>
+
+      <Group>
+        <GroupLabel>결과</GroupLabel>
+        {face.outputs.length === 0 && <Empty>없음</Empty>}
+        {blocked && <Why>{result?.message}</Why>}
+        {!blocked && face.outputs.map(v => {
+          const key = slot(v.nodeId, v.variableId)
+          const cell = result?.results?.[key]
+          return (
+            <Row key={key}>
+              <Name title={[...v.path, v.label].join(' / ')}>
+                <Where>{v.path[v.path.length - 1]}</Where>
+                {v.label}
+                {v.unit && <Unit>{v.unit}</Unit>}
+              </Name>
+              <Out $bad={!!cell?.error} title={cell?.error || ''}>
+                {cell?.error ? '계산 실패' : cell ? fmt(cell.value) : '—'}
+              </Out>
+              <Handle type="source" position={Position.Right} id={key} />
+            </Row>
+          )
+        })}
+      </Group>
+
+      {/* 안에서 무엇이 왜 막혔는지. 「하위 워크플로 실패」 만 띄우면 어느 카드를
+          열어야 하는지 알 수가 없다. */}
+      {status === STATUS.failed && result?.message && <Why>{result.message}</Why>}
+    </Nest>
+  )
+}
+
+const nodeTypes = { card: CardNode, groupBox: GroupBox, nested: NestedNode }
 
 /** 선 위에는 기호만. "전달토크 (T)" 를 통째로 얹으면 선이 글자에 묻힌다. */
 function shortLabel(label) {
@@ -485,6 +642,11 @@ function WorkflowCanvas({
     return { feedback, inside }
   }, [workflow.nodes, workflow.links])
 
+  /** 하위 워크플로가 놓인 자리들. 손잡이 이름 규칙이 여기서 갈린다. */
+  const nested = useMemo(() => nestedIds(workflow), [workflow])
+  const handle = useCallback(
+    (link, side) => handleAt(link, side, nested), [nested])
+
   /** 어느 입력이 연결로 채워지는가. 편집을 막는 판단의 근거다. */
   const linksByTarget = useMemo(() => {
     const aliasOf = new Map((workflow.nodes || []).map(n => [String(n.id), n.alias]))
@@ -492,14 +654,14 @@ function WorkflowCanvas({
     for (const link of workflow.links || []) {
       const key = String(link.to_node_id)
       if (!byNode.has(key)) byNode.set(key, new Map())
-      byNode.get(key).set(String(link.to_variable_id), {
+      byNode.get(key).set(handle(link, 'to'), {
         ...link,
         fromAlias: aliasOf.get(String(link.from_node_id)) || '',
         feedback: loops.feedback.has(String(link.id)),
       })
     }
     return byNode
-  }, [workflow.nodes, workflow.links, loops])
+  }, [workflow.nodes, workflow.links, loops, handle])
 
   /** 결론 노드 — 아무 데로도 값을 보내지 않는 노드. 답이 나오는 곳이다. */
   const terminals = useMemo(
@@ -543,7 +705,13 @@ function WorkflowCanvas({
     const at = laidOut?.[node.id]
     return {
       id: String(node.id),
-      type: 'card',
+      type: node.sub_workflow ? 'nested' : 'card',
+      // 묶인 노드는 좌표가 **상자 기준**이 된다. 저장은 절대값이라
+      // 그릴 때 빼고 저장할 때 더한다.
+      ...(boxed.parentOf[node.id]
+        ? { parentNode: boxed.parentOf[node.id], extent: 'parent' }
+        : {}),
+      zIndex: 1,
       // 노드는 이 화면에서 지우지 않는다 — 카드를 빼는 것은 입력값과 연결이
       // 함께 사라지는 일이라 확인을 거쳐야 한다. 막는 자리는 **노드마다**다.
       // ReactFlow 에 `nodesDeletable` 같은 prop 은 없다.
@@ -561,6 +729,16 @@ function WorkflowCanvas({
         result: run?.nodes?.[node.id],
         isTerminal: terminals.has(String(node.id)),
         inLoop: loops.inside.has(String(node.id)),
+        // 중첩 자리만 읽는 것들. 카드 자리에서는 쓰지 않는다.
+        subName: node.sub_workflow_name,
+        subDeleted: node.sub_workflow_deleted,
+        // 얼굴은 **저장하지 않고 매번 유도한다.** 안쪽 배선을 고치는 순간
+        // 손잡이가 따라 바뀌어야 하기 때문이다.
+        face: node.sub_workflow
+          ? workflowInterface(node.sub_workflow, cardVariables)
+          : EMPTY_FACE,
+        onOpen: () => node.sub_workflow_route
+          && window.open(node.sub_workflow_route, '_blank', 'noopener'),
         onInput: (variableId, value) => onInput(node, variableId, value),
         onRemove: () => onRemove(node),
       },
@@ -573,7 +751,7 @@ function WorkflowCanvas({
   const toEdges = useCallback(() => (workflow.links || []).map(link => {
     // 선 위에 **흐르는 값**을 적는다. 순서도가 표를 가장 확실하게 이기는 곳이다 —
     // 어디서 값이 튀는지, 어느 가지가 죽었는지 선만 훑어도 보인다.
-    const cell = run?.nodes?.[link.from_node_id]?.results?.[link.from_variable_id]
+    const cell = run?.nodes?.[link.from_node_id]?.results?.[handle(link, 'from')]
     const symbol = shortLabel(link.from_label)
     const back = loops.feedback.has(String(link.id))
     // 돌렸는데 값이 없다 = 이 선으로는 아무것도 흐르지 않았다. 실선으로 두면
@@ -582,9 +760,9 @@ function WorkflowCanvas({
     return {
       id: String(link.id),
       source: String(link.from_node_id),
-      sourceHandle: String(link.from_variable_id),
+      sourceHandle: handle(link, 'from'),
       target: String(link.to_node_id),
-      targetHandle: String(link.to_variable_id),
+      targetHandle: handle(link, 'to'),
       // 되돌아가는 선은 곧게 그으면 노드를 뚫고 지나간다. 계단선으로 돌린다.
       type: back ? 'smoothstep' : 'default',
       label: (back ? '↺ ' : '')
@@ -606,7 +784,7 @@ function WorkflowCanvas({
         color: dead ? 'hsl(var(--border-strong))' : (back ? LOOP : 'hsl(var(--accent))'),
       },
     }
-  }), [workflow.links, run, loops])
+  }), [workflow.links, run, loops, handle])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(toNodes())
   const [edges, setEdges, onEdgesChange] = useEdgesState(toEdges())
@@ -636,13 +814,23 @@ function WorkflowCanvas({
     if (laidOut && onRelayout) onRelayout(laidOut)
   }, [laidOut, onRelayout])
 
+  /**
+   * 손잡이 이름이 곧 자리다.
+   *
+   * 카드면 `변수id`, 워크플로면 `안쪽노드:변수id`. 손잡이에 다 적어 두었기 때문에
+   * 화면이 「지금 무엇을 고르는 중인가」 를 따로 기억하지 않아도 된다.
+   */
   const handleConnect = useCallback((params) => {
     if (!params.sourceHandle || !params.targetHandle) return
+    const from = parseSlot(params.sourceHandle, params.source)
+    const to = parseSlot(params.targetHandle, params.target)
     onConnect({
       from_node_id: Number(params.source),
-      from_variable_id: Number(params.sourceHandle),
+      from_inner_node_id: from.inner,
+      from_variable_id: from.variable,
       to_node_id: Number(params.target),
-      to_variable_id: Number(params.targetHandle),
+      to_inner_node_id: to.inner,
+      to_variable_id: to.variable,
     })
   }, [onConnect])
 

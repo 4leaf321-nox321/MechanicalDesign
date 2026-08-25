@@ -648,6 +648,165 @@ def _wired(client, head, chain):
     return wf, n1, n2
 
 
+# --- 중첩 -----------------------------------------------------------------------
+
+def _sub(client, head, wf_id, sub_id, alias=''):
+    return client.post(f'/api/workflows/{wf_id}/nodes', headers=head,
+                       json={'sub_workflow_id': sub_id, 'alias': alias})
+
+
+def test_a_workflow_can_sit_in_another_as_a_node(app, client, chain):
+    """「관로 계열」 을 한 번 짜 두고 여러 검토에서 다시 쓰는 일이 실제로 있다."""
+    head = chain['head']
+    inner, n1, n2 = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+
+    r = _sub(client, head, outer['id'], inner['id'], '앞단')
+    assert r.status_code == 201
+    node = r.get_json()
+    assert node['sub_workflow_id'] == inner['id']
+    assert node['card_id'] is None
+    assert node['sub_workflow_name'] == '브래킷 검토'
+
+
+def test_a_node_is_a_card_or_a_workflow_not_both(app, client, chain):
+    """둘 다 주면 어느 쪽이 이기는지 알 수 없다. 조용히 고르지 않고 막는다."""
+    head = chain['head']
+    inner, _, _ = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+
+    both = client.post(f"/api/workflows/{outer['id']}/nodes", headers=head,
+                       json={'card_id': chain['load_id'],
+                             'sub_workflow_id': inner['id']})
+    assert both.status_code == 400
+    assert both.get_json()['code'] == 'MD-WF-0114'
+
+    neither = client.post(f"/api/workflows/{outer['id']}/nodes", headers=head,
+                          json={})
+    assert neither.status_code == 400
+
+
+def test_a_workflow_cannot_contain_itself(app, client, chain):
+    head, wf = chain['head'], chain['wf']
+    r = _sub(client, head, wf['id'], wf['id'])
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0117'
+
+
+def test_two_workflows_cannot_contain_each_other(app, client, chain):
+    """**층을 넘는 순환은 같은 층의 순환과 다르다.**
+
+    같은 층은 돌려서 수렴시킬 수 있지만, 이건 정의가 자기를 부르는 것이라
+    펼치는 것부터 끝나지 않는다 — 수렴이라는 개념 자체가 없다.
+    """
+    head = chain['head']
+    a = chain['wf']
+    b = client.post('/api/workflows', json={'name': 'B'}, headers=head).get_json()
+
+    assert _sub(client, head, a['id'], b['id']).status_code == 201
+    r = _sub(client, head, b['id'], a['id'])
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0118'
+
+
+def test_the_cycle_guard_looks_all_the_way_down(app, client, chain):
+    """A ⊃ B ⊃ C 일 때 C 안에 A 를 넣는 것도 막아야 한다."""
+    head = chain['head']
+    a = chain['wf']
+    b = client.post('/api/workflows', json={'name': 'B'}, headers=head).get_json()
+    c = client.post('/api/workflows', json={'name': 'C'}, headers=head).get_json()
+
+    assert _sub(client, head, b['id'], c['id']).status_code == 201
+    assert _sub(client, head, a['id'], b['id']).status_code == 201
+
+    r = _sub(client, head, c['id'], a['id'])
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0118'
+
+
+def test_a_used_workflow_cannot_be_purged(app, client, chain):
+    """쓰이고 있는 것이 사라지면 그 자리가 통째로 뜻을 잃는다 — 카드와 같다."""
+    head = chain['head']
+    inner, _, _ = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+    _sub(client, head, outer['id'], inner['id'])
+
+    client.delete(f"/api/workflows/{inner['id']}", headers=head)
+    r = client.delete(f"/api/workflows/{inner['id']}/permanent", headers=head)
+    assert r.status_code == 409
+    # 무엇을 먼저 치워야 하는지 이름으로 말해 준다. 「제약 위반」 으로는 못 고친다.
+    assert '전체 검토' in r.get_json()['error']
+
+
+def test_the_full_tree_comes_down_in_one_response(app, client, chain):
+    """층마다 따로 부르게 두면 그중 하나가 늦게 와서 그림이 반쯤 그려진다."""
+    head = chain['head']
+    inner, n1, n2 = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+    _sub(client, head, outer['id'], inner['id'], '앞단')
+
+    full = client.get(f"/api/workflows/{outer['id']}", headers=head).get_json()
+    nested = full['nodes'][0]['sub_workflow']
+    assert nested['name'] == '브래킷 검토'
+    assert len(nested['nodes']) == 2
+    assert len(nested['links']) == 1
+
+
+def test_a_link_into_a_workflow_names_the_inner_slot(app, client, chain):
+    """변수 id 만으로는 못 짚는다 — 같은 카드가 안에서 두 자리에 놓일 수 있다."""
+    head = chain['head']
+    inner, n1, n2 = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+    box = _sub(client, head, outer['id'], inner['id'], '앞단').get_json()
+    feeder = _node(client, head, outer['id'], chain['load_id'])
+
+    # 안쪽 자리를 안 밝히면 막는다.
+    vague = client.post(f"/api/workflows/{outer['id']}/links", headers=head, json={
+        'from_node_id': feeder['id'], 'from_variable_id': chain['load_vars']['F'],
+        'to_node_id': box['id'], 'to_variable_id': chain['stress_vars']['A'],
+    })
+    assert vague.status_code == 400
+    assert vague.get_json()['code'] == 'MD-WF-0127'
+
+    # 밝히면 이어진다.
+    ok = client.post(f"/api/workflows/{outer['id']}/links", headers=head, json={
+        'from_node_id': feeder['id'], 'from_variable_id': chain['load_vars']['F'],
+        'to_node_id': box['id'], 'to_inner_node_id': n2['id'],
+        'to_variable_id': chain['stress_vars']['A'],
+    })
+    assert ok.status_code == 201, ok.get_json()
+    assert ok.get_json()['to_inner_node_id'] == n2['id']
+
+
+def test_one_link_per_inner_slot(app, client, chain):
+    """하위 워크플로에서도 「한 입력에 연결 하나」 가 살아야 한다.
+
+    안쪽 자리를 유일 제약에 안 넣으면 이것이 조용히 뚫린다.
+    """
+    head = chain['head']
+    inner, n1, n2 = _wired(client, head, chain)
+    outer = client.post('/api/workflows', json={'name': '전체 검토'},
+                        headers=head).get_json()
+    box = _sub(client, head, outer['id'], inner['id'], '앞단').get_json()
+    a = _node(client, head, outer['id'], chain['load_id'])
+    b = _node(client, head, outer['id'], chain['load_id'])
+
+    body = {'to_node_id': box['id'], 'to_inner_node_id': n2['id'],
+            'to_variable_id': chain['stress_vars']['A'],
+            'from_variable_id': chain['load_vars']['F']}
+    first = client.post(f"/api/workflows/{outer['id']}/links", headers=head,
+                        json={**body, 'from_node_id': a['id']})
+    assert first.status_code == 201
+    second = client.post(f"/api/workflows/{outer['id']}/links", headers=head,
+                         json={**body, 'from_node_id': b['id']})
+    assert second.status_code == 409
+
+
 # --- 묶음 -----------------------------------------------------------------------
 
 def _group(client, head, wf_id, name, node_ids, color=None):

@@ -168,3 +168,93 @@ describe('돌릴 수 없는 상태', () => {
     expect(issues.find(i => i.code === 'card-trashed').level).toBe('error')
   })
 })
+
+/**
+ * 자리에 워크플로가 놓였을 때.
+ *
+ * 검증이 중첩을 모르면 **정상인 것을 오류라고 말한다** — 배선이 가리키는 칸을
+ * 못 찾아 전부 「끊긴 연결」이 되고, 오류가 있으면 계산을 안 하므로 워크플로가
+ * 통째로 멎는다. 잘못된 오류가 오류를 안 내는 것보다 나은 것도 아니다.
+ */
+describe('중첩 자리', () => {
+  const inner = () => ({
+    id: 7,
+    nodes: [
+      { id: 1, card_id: 100, alias: '하중계산', inputs: { 1: 50 } },
+      { id: 2, card_id: 200, alias: '응력검토', inputs: { 12: 25 } },
+    ],
+    links: [{ id: 1, from_node_id: 1, from_inner_node_id: 1, from_variable_id: 2,
+              from_label: '하중 (F)',
+              to_node_id: 2, to_inner_node_id: 2, to_variable_id: 11,
+              to_label: '입력하중 (Fin)' }],
+  })
+
+  /** 중첩 자리 하나 + 그 안쪽 칸으로 값을 보내는 카드 하나. */
+  const outer = () => ({
+    nodes: [
+      { id: 90, sub_workflow: inner(), alias: '앞단',
+        inputs: { '1:1': 50, '2:12': 25 } },
+      { id: 91, card_id: 100, alias: '다른 하중', inputs: { 1: 3 } },
+    ],
+    links: [{ id: 5, from_node_id: 91, from_inner_node_id: 91, from_variable_id: 2,
+              from_label: '하중 (F)',
+              to_node_id: 90, to_inner_node_id: 2, to_variable_id: 12,
+              to_label: '단면적 (A)' }],
+    order: [91, 90],
+  })
+
+  it('안쪽 자리로 들어가는 배선을 끊겼다고 하지 않는다', () => {
+    const issues = validateWorkflow(outer(), cards())
+    expect(issues.filter(i => i.code === 'broken-link')).toEqual([])
+    expect(issues.some(i => i.level === 'error')).toBe(false)
+  })
+
+  it('배선이 채우는 안쪽 칸은 비었다고 하지 않는다', () => {
+    // 이 경고가 뜨면, 채울 수 없는 칸을 채우라는 말이 되어 사람이 헤맨다.
+    const issues = validateWorkflow(outer(), cards())
+    const empty = issues.filter(i => i.code === 'empty-input')
+    expect(empty.map(i => i.variable_id)).not.toContain('2:12')
+  })
+
+  it('안쪽 빈 칸은 자리 이름으로 짚어 준다', () => {
+    const wf = outer()
+    delete wf.nodes[0].inputs['1:1']
+    const issues = validateWorkflow(wf, cards())
+    const empty = issues.find(i => i.code === 'empty-input' && i.node_id === 90)
+    expect(empty.variable_id).toBe('1:1')
+    // 안에 같은 이름이 여럿일 수 있어, 어느 카드의 칸인지까지 적어야 한다.
+    expect(empty.message).toContain('하중계산')
+  })
+
+  it('안쪽 칸에도 단위 검사가 그대로 걸린다', () => {
+    // 중첩 뒤로 숨는 순간 이 검사가 빠지면, 값만 1000배 틀리고 계산은 멀쩡히
+    // 도는 고장이 자리 안에서 조용히 일어난다.
+    const wf = outer()
+    // 안쪽 배선을 걷어 '응력검토.입력하중' 을 얼굴로 끌어낸 뒤, 밖에서 kN 을
+    // N 자리에 꽂는다.
+    wf.nodes[0].sub_workflow.links = []
+    wf.links[0].to_inner_node_id = 2
+    wf.links[0].to_variable_id = 11
+    wf.links[0].to_label = '입력하중 (Fin)'
+    const issues = validateWorkflow(wf, { 100: load(FORCE_KN), 200: stress(FORCE_N) })
+    expect(issues.some(i => i.code === 'unit-scale')).toBe(true)
+  })
+
+  it('얼굴 밖을 가리키는 배선은 끊긴 배선이다', () => {
+    // 안쪽 중간값은 손잡이가 없다. 거기로 간 선은 실제로 갈 곳이 없다.
+    const wf = outer()
+    wf.links[0].to_inner_node_id = 2
+    wf.links[0].to_variable_id = 11        // 이미 안에서 채워지는 칸
+    const issues = validateWorkflow(wf, cards())
+    expect(issues.some(i => i.code === 'broken-link')).toBe(true)
+  })
+
+  it('워크플로가 휴지통에 있으면 오류다', () => {
+    const wf = outer()
+    wf.nodes[0].sub_workflow_deleted = true
+    const issues = validateWorkflow(wf, cards())
+    const found = issues.find(i => i.code === 'workflow-trashed')
+    expect(found.level).toBe('error')
+    expect(found.node_id).toBe(90)
+  })
+})

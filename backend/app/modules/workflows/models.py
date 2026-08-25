@@ -75,8 +75,14 @@ class Workflow(db.Model):
     iter_relaxation = db.Column(db.Float, nullable=False, default=0.7,
                                 server_default='0.7')
 
+    #: 이 워크플로에 놓인 자리들.
+    #:
+    #: `foreign_keys` 를 밝혀야 한다 — 노드가 `workflows` 를 **두 번** 가리키기
+    #: 때문이다(자기가 속한 워크플로, 그리고 자기가 품은 하위 워크플로).
+    #: 안 밝히면 어느 쪽으로 이을지 정할 수 없어 조인 자체가 안 된다.
     nodes = db.relationship('WorkflowNode', cascade='all, delete-orphan',
                             back_populates='workflow', lazy='selectin',
+                            foreign_keys='WorkflowNode.workflow_id',
                             order_by='WorkflowNode.sort_order')
     links = db.relationship('WorkflowLink', cascade='all, delete-orphan',
                             back_populates='workflow', lazy='selectin')
@@ -202,21 +208,40 @@ class WorkflowMount(db.Model):
 
 
 class WorkflowNode(db.Model):
-    """카드가 놓이는 한 자리."""
+    """한 자리 — **카드 한 장이거나, 워크플로 하나**.
+
+    둘 중 하나만 가리킨다. 워크플로를 가리키면 그 안의 계산이 통째로 이
+    자리에 들어온다 — 「관로 계열」 을 한 번 짜 두고 여러 검토에서 다시 쓰는
+    일이 실제로 있다.
+
+    **하위 워크플로도 살아 있는 참조다.** 안쪽을 고치면 그것을 쓰는 모든
+    바깥이 따라 바뀐다. 카드가 그런 것과 같은 규칙이고, 그래서 완전 삭제도
+    같은 방식으로 막는다(RESTRICT).
+    """
 
     __tablename__ = 'workflow_nodes'
 
     id = db.Column(db.Integer, primary_key=True)
     workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id', ondelete='CASCADE'),
                             nullable=False, index=True)
-    workflow = db.relationship('Workflow', back_populates='nodes')
+    workflow = db.relationship('Workflow', back_populates='nodes',
+                               foreign_keys=[workflow_id])
 
     #: **완전 삭제를 막는다(RESTRICT).** 카드가 사라지면 이 자리가 통째로 뜻을
     #: 잃는데, CASCADE 로 지워 버리면 워크플로가 조용히 반쪽이 된다. 앱이 먼저
     #: 친절한 메시지로 막고, 이 제약은 그 뒤의 마지막 방어선이다.
     card_id = db.Column(db.Integer, db.ForeignKey('cards.id', ondelete='RESTRICT'),
-                        nullable=False, index=True)
+                        nullable=True, index=True)
     card = db.relationship('Card')
+
+    #: 카드 대신 워크플로를 놓은 자리. **둘 중 하나만** 채워진다.
+    #:
+    #: 카드와 같은 `RESTRICT` 다 — 쓰이고 있는 워크플로가 사라지면 이 자리가
+    #: 통째로 뜻을 잃는다.
+    sub_workflow_id = db.Column(
+        db.Integer, db.ForeignKey('workflows.id', ondelete='RESTRICT'),
+        nullable=True, index=True)
+    sub_workflow = db.relationship('Workflow', foreign_keys=[sub_workflow_id])
 
     #: 이 자리의 이름. '상부 볼트' 처럼 같은 카드를 두 번 쓸 때 구분한다.
     alias = db.Column(db.String(100), nullable=False, default='')
@@ -258,6 +283,13 @@ class WorkflowNode(db.Model):
             'card_route': self.card.route if self.card else None,
             # 카드가 휴지통에 있으면 이 노드는 돌지 않는다. 검증이 읽는다.
             'card_deleted': bool(self.card and self.card.deleted_at),
+            'sub_workflow_id': self.sub_workflow_id,
+            'sub_workflow_name': (self.sub_workflow.name
+                                  if self.sub_workflow else None),
+            'sub_workflow_route': (self.sub_workflow.route
+                                   if self.sub_workflow else None),
+            'sub_workflow_deleted': bool(self.sub_workflow
+                                         and self.sub_workflow.deleted_at),
             'alias': self.alias or '',
             'group_id': self.group_id,
             'layout_x': self.layout_x,
@@ -280,8 +312,15 @@ class WorkflowLink(db.Model):
     """
 
     __tablename__ = 'workflow_links'
+    #: **안쪽 자리까지 넣어야 한다.** 하위 워크플로 노드 하나에 여러 선이
+    #: 들어올 수 있고(안쪽 자리가 서로 다르므로), 그때 `(노드, 변수)` 만으로는
+    #: 서로 다른 자리가 같은 값이 된다.
+    #:
+    #: `to_inner_node_id` 를 **비워 두지 않는** 까닭이 여기 있다. Postgres 는
+    #: NULL 끼리 안 부딪힌 것으로 쳐서, 비워 두면 카드 노드의 「한 입력에 연결
+    #: 하나」 가 조용히 뚫린다. 카드 노드에서는 자기 자신을 적는다.
     __table_args__ = (
-        db.UniqueConstraint('to_node_id', 'to_variable_id',
+        db.UniqueConstraint('to_node_id', 'to_inner_node_id', 'to_variable_id',
                             name='uq_workflow_link_target'),
     )
 
@@ -293,12 +332,21 @@ class WorkflowLink(db.Model):
     from_node_id = db.Column(db.Integer,
                              db.ForeignKey('workflow_nodes.id', ondelete='CASCADE'),
                              nullable=False, index=True)
+    #: 보내는 쪽이 하위 워크플로면, 그 **안쪽 어느 노드**의 결과인가.
+    #:
+    #: 변수 id 만으로는 못 짚는다 — 같은 카드가 안에서 두 자리에 놓이면
+    #: 변수 id 가 똑같기 때문이다. 카드 노드에서는 자기 자신을 적는다.
+    from_inner_node_id = db.Column(db.Integer, nullable=False)
+
     from_variable_id = db.Column(db.Integer, nullable=False)
     from_label = db.Column(db.String(160), nullable=False, default='')
 
     to_node_id = db.Column(db.Integer,
                            db.ForeignKey('workflow_nodes.id', ondelete='CASCADE'),
                            nullable=False, index=True)
+    #: 받는 쪽이 하위 워크플로면, 그 안쪽 어느 노드의 입력인가.
+    to_inner_node_id = db.Column(db.Integer, nullable=False)
+
     to_variable_id = db.Column(db.Integer, nullable=False)
     to_label = db.Column(db.String(160), nullable=False, default='')
 
@@ -309,9 +357,11 @@ class WorkflowLink(db.Model):
             'id': self.id,
             'workflow_id': self.workflow_id,
             'from_node_id': self.from_node_id,
+            'from_inner_node_id': self.from_inner_node_id,
             'from_variable_id': self.from_variable_id,
             'from_label': self.from_label or '',
             'to_node_id': self.to_node_id,
+            'to_inner_node_id': self.to_inner_node_id,
             'to_variable_id': self.to_variable_id,
             'to_label': self.to_label or '',
         }

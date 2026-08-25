@@ -21,18 +21,12 @@
  */
 
 import { executionBlocks } from './scc'
+import { handleAt, nestedIds, slotMap, slotsOf } from './slots'
 
 export const LEVELS = { error: 'error', warning: 'warning', info: 'info' }
 
-function variableMap(variables) {
-  const map = new Map()
-  for (const v of variables || []) map.set(String(v.id), v)
-  return map
-}
-
 function label(variable, fallback) {
-  if (!variable) return fallback
-  return variable.symbol ? `${variable.name} (${variable.symbol})` : variable.name
+  return variable ? variable.label : fallback
 }
 
 /** 같은 차원인가. 대안 목록의 단위 이름 집합으로 판단한다. */
@@ -97,7 +91,15 @@ export function validateWorkflow(workflow, cardVariables) {
     }
   }
 
-  const varsOf = (node) => variableMap(cardVariables?.[node.card_id])
+  // 칸을 **자리 이름**으로 찾는다. 카드 자리는 변수 id, 워크플로 자리는
+  // `안쪽노드:변수id`. 순서도가 손잡이에 다는 것과 같은 함수를 쓴다 — 검증이
+  // 따로 계산하면, 화면에 멀쩡히 붙어 있는 선을 끊겼다고 말하게 된다.
+  //
+  // 중첩 자리에서는 **얼굴에 있는 칸만** 들어온다. 그것이 맞다: 얼굴 밖을
+  // 가리키는 배선은 실제로 갈 곳이 없는 배선이다.
+  const nested = nestedIds(workflow)
+  const varsOf = (node) => slotMap(node, cardVariables)
+  const at = (link, side) => handleAt(link, side, nested)
   const nodeById = new Map(nodes.map(n => [String(n.id), n]))
 
   // --- 휴지통에 있는 카드 --------------------------------------------------------
@@ -108,6 +110,17 @@ export function validateWorkflow(workflow, cardVariables) {
         code: 'card-trashed',
         node_id: node.id,
         message: `'${node.alias}' 의 카드가 휴지통에 있습니다. 되살리거나 노드를 빼 주세요.`,
+      })
+    }
+    // 하위 워크플로도 똑같이 살아 있는 참조다. 휴지통에 든 것을 그냥 두면
+    // 그 자리가 통째로 뜻을 잃는데, 그림에서는 상자가 그대로 보인다.
+    if (node.sub_workflow_deleted) {
+      issues.push({
+        level: LEVELS.error,
+        code: 'workflow-trashed',
+        node_id: node.id,
+        message: `'${node.alias}' 의 워크플로가 휴지통에 있습니다.`
+          + ' 되살리거나 자리를 빼 주세요.',
       })
     }
   }
@@ -122,8 +135,8 @@ export function validateWorkflow(workflow, cardVariables) {
     const dst = nodeById.get(String(link.to_node_id))
     if (!src || !dst) continue
 
-    const fromVar = varsOf(src).get(String(link.from_variable_id))
-    const toVar = varsOf(dst).get(String(link.to_variable_id))
+    const fromVar = varsOf(src).get(at(link, 'from'))
+    const toVar = varsOf(dst).get(at(link, 'to'))
 
     if (!fromVar) {
       issues.push({
@@ -145,7 +158,7 @@ export function validateWorkflow(workflow, cardVariables) {
     }
     if (!fromVar || !toVar) continue
 
-    linkedTargets.add(`${link.to_node_id}:${link.to_variable_id}`)
+    linkedTargets.add(`${link.to_node_id}:${at(link, 'to')}`)
 
     const a = fromVar.unit_info
     const b = toVar.unit_info
@@ -183,13 +196,11 @@ export function validateWorkflow(workflow, cardVariables) {
 
   // --- 안 채워진 입력 ------------------------------------------------------------
   for (const node of nodes) {
-    const variables = cardVariables?.[node.card_id] || []
     const stored = node.inputs || {}
-    for (const v of variables) {
-      if (v.category !== 'input') continue
-      if (linkedTargets.has(`${node.id}:${v.id}`)) continue
+    for (const v of slotsOf(node, cardVariables, 'input')) {
+      if (linkedTargets.has(`${node.id}:${v.key}`)) continue
 
-      const value = stored[String(v.id)] ?? stored[v.id]
+      const value = stored[v.key]
       const blank = value === '' || value === null || value === undefined
         || (Array.isArray(value) && value.length === 0)
       if (blank) {
@@ -197,7 +208,7 @@ export function validateWorkflow(workflow, cardVariables) {
           level: LEVELS.warning,
           code: 'empty-input',
           node_id: node.id,
-          variable_id: v.id,
+          variable_id: v.key,
           message: `'${node.alias}' 의 ${label(v)} 이(가) 비어 있습니다 — `
             + '연결도 없고 값도 없습니다.',
         })

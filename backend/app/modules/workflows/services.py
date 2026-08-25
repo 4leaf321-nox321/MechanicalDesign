@@ -77,7 +77,20 @@ def assert_can_edit(wf, actor):
 
 # --- 노드 -----------------------------------------------------------------------
 
-def add_node(wf, card_id, alias='', layout_x=0, layout_y=0):
+def add_node(wf, card_id=None, alias='', layout_x=0, layout_y=0,
+             sub_workflow_id=None):
+    """한 자리 — **카드 한 장이거나, 워크플로 하나**. 둘 중 하나만.
+
+    둘 다 주면 어느 쪽이 이기는지 알 수 없다. 둘 다 안 주면 빈 자리가 된다.
+    조용히 하나를 고르지 않고 막는다.
+    """
+    if bool(card_id) == bool(sub_workflow_id):
+        raise AppError('MD-WF-0114',
+                       '카드 하나 또는 워크플로 하나를 지정해 주세요.')
+
+    if sub_workflow_id:
+        return _add_sub_workflow(wf, sub_workflow_id, alias, layout_x, layout_y)
+
     card = db.session.get(Card, card_id)
     if card is None:
         raise AppError('MD-WF-0110', f'카드 {card_id} 를 찾을 수 없습니다.', status=404)
@@ -99,6 +112,82 @@ def add_node(wf, card_id, alias='', layout_x=0, layout_y=0):
     db.session.add(node)
     db.session.commit()
     return node
+
+
+def _add_sub_workflow(wf, sub_id, alias, layout_x, layout_y):
+    sub = db.session.get(Workflow, sub_id)
+    if sub is None:
+        raise AppError('MD-WF-0115',
+                       f'워크플로 {sub_id} 를 찾을 수 없습니다.', status=404)
+    if sub.deleted_at is not None:
+        raise AppError('MD-WF-0116',
+                       '휴지통에 있는 워크플로는 넣을 수 없습니다. 먼저 되살려 주세요.',
+                       status=409)
+    if sub.id == wf.id:
+        raise AppError('MD-WF-0117', '자기 자신을 넣을 수 없습니다.')
+    if contains(sub, wf.id):
+        raise AppError('MD-WF-0118',
+                       f"'{sub.name}' 안에 이 워크플로가 이미 들어 있습니다. "
+                       '서로를 품으면 펼치는 것부터 끝나지 않습니다.')
+
+    node = WorkflowNode(
+        workflow_id=wf.id,
+        sub_workflow_id=sub.id,
+        alias=(alias or '').strip() or _free_alias(wf, sub.name),
+        layout_x=int(layout_x or 0),
+        layout_y=int(layout_y or 0),
+        sort_order=(max([n.sort_order for n in wf.nodes], default=0) + 1),
+    )
+    db.session.add(node)
+    db.session.commit()
+    return node
+
+
+def contains(wf, target_id, seen=None):
+    """이 워크플로 안에 그 워크플로가 (몇 겹이든) 들어 있는가.
+
+    **층을 넘는 순환은 같은 층의 순환과 다르다.** 같은 층은 돌려서 수렴시킬
+    수 있지만, 이건 정의가 자기를 부르는 것이라 펼치는 것부터 끝나지 않는다.
+    수렴이라는 개념 자체가 없다.
+
+    `seen` 은 자료가 이미 망가진 경우를 위한 것이다 — 막아 두지만 DB 를 손으로
+    고친 뒤에도 영영 돌면 안 된다.
+    """
+    seen = seen if seen is not None else set()
+    for node in wf.nodes:
+        sub = node.sub_workflow
+        if sub is None:
+            continue
+        if sub.id == target_id:
+            return True
+        if sub.id in seen:
+            continue
+        seen.add(sub.id)
+        if contains(sub, target_id, seen):
+            return True
+    return False
+
+
+#: 펼칠 수 있는 깊이. 순환은 막지만, 깊이 자체가 실수일 수 있다 — 서른 겹
+#: 워크플로는 사람이 읽을 수 있는 물건이 아니다.
+MAX_DEPTH = 12
+
+
+def expand(wf, depth=0):
+    """하위 워크플로를 노드 안에 통째로 실어 내려보낸다.
+
+    화면이 층마다 따로 부르게 두면, 그중 하나가 늦게 와서 그림이 반쯤 그려진
+    상태가 생긴다. 한 번에 다 준다.
+    """
+    body = wf.to_dict(full=True)
+    if depth >= MAX_DEPTH:
+        # 여기서 멈춘 자리는 화면이 「너무 깊습니다」 로 말한다.
+        body['too_deep'] = True
+        return body
+    for node, row in zip(wf.nodes, body['nodes']):
+        if node.sub_workflow is not None:
+            row['sub_workflow'] = expand(node.sub_workflow, depth + 1)
+    return body
 
 
 def _free_alias(wf, base):
@@ -226,13 +315,22 @@ def remove_group(wf, group_id):
 
 # --- 연결 -----------------------------------------------------------------------
 
-def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id):
-    """배선 하나. 여기서 막는 것이 이 기능의 안전장치 전부다."""
+def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id,
+             from_inner_node_id=None, to_inner_node_id=None):
+    """배선 하나. 여기서 막는 것이 이 기능의 안전장치 전부다.
+
+    하위 워크플로가 양 끝에 오면 **그 안의 어느 자리**인지까지 받는다. 카드
+    노드에서는 자기 자신을 적는다 — 비워 두면 유일 제약이 NULL 을 안 세서
+    「한 입력에 연결 하나」 가 조용히 뚫린다.
+    """
     src = _node_of(wf, from_node_id)
     dst = _node_of(wf, to_node_id)
 
-    from_var = _variable_of(src, from_variable_id)
-    to_var = _variable_of(dst, to_variable_id)
+    from_inner = _inner_node(src, from_inner_node_id)
+    to_inner = _inner_node(dst, to_inner_node_id)
+
+    from_var = _variable_of(from_inner, from_variable_id)
+    to_var = _variable_of(to_inner, to_variable_id)
 
     # 나가는 쪽은 계산된 값이어야 한다. 입력을 입력에 잇는 것은 값을 옮기는
     # 것이 아니라 같은 값을 두 번 적는 것이라, 워크플로가 할 일이 아니다.
@@ -247,8 +345,9 @@ def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id):
                        f"'{to_var.name}' 은(는) 계산되는 값입니다. "
                        '입력값에만 연결할 수 있습니다.')
 
-    existing = WorkflowLink.query.filter_by(to_node_id=dst.id,
-                                            to_variable_id=to_var.id).first()
+    existing = WorkflowLink.query.filter_by(
+        to_node_id=dst.id, to_inner_node_id=to_inner.id,
+        to_variable_id=to_var.id).first()
     if existing is not None:
         raise AppError('MD-WF-0123',
                        f"'{to_var.name}' 에는 이미 연결이 있습니다. "
@@ -262,9 +361,11 @@ def add_link(wf, from_node_id, from_variable_id, to_node_id, to_variable_id):
 
     link = WorkflowLink(
         workflow_id=wf.id,
-        from_node_id=src.id, from_variable_id=from_var.id,
+        from_node_id=src.id, from_inner_node_id=from_inner.id,
+        from_variable_id=from_var.id,
         from_label=_label(from_var),
-        to_node_id=dst.id, to_variable_id=to_var.id,
+        to_node_id=dst.id, to_inner_node_id=to_inner.id,
+        to_variable_id=to_var.id,
         to_label=_label(to_var),
     )
     db.session.add(link)
@@ -283,6 +384,45 @@ def remove_link(wf, link_id):
 def _label(variable):
     return (f'{variable.name} ({variable.symbol})'
             if variable.symbol else variable.name)
+
+
+def _inner_node(node, inner_id):
+    """배선이 실제로 닿는 자리.
+
+    카드 노드면 자기 자신, 하위 워크플로면 그 안의 노드다. 안쪽 노드는 몇 겹
+    아래일 수 있어서 깊이를 재귀로 훑는다 — 얼굴이 그렇게 올라오기 때문이다.
+    """
+    if node.sub_workflow is None:
+        if inner_id not in (None, node.id):
+            raise AppError('MD-WF-0119',
+                           '카드 노드에는 안쪽 자리가 없습니다.')
+        return node
+
+    if inner_id is None:
+        raise AppError('MD-WF-0127',
+                       f"'{node.alias}' 는 워크플로입니다. "
+                       '그 안의 어느 자리인지 함께 지정해 주세요.')
+
+    found = _find_within(node.sub_workflow, inner_id)
+    if found is None:
+        raise AppError('MD-WF-0128',
+                       f"'{node.alias}' 안에서 그 자리를 찾을 수 없습니다.",
+                       status=404)
+    return found
+
+
+def _find_within(wf, node_id, seen=None):
+    seen = seen if seen is not None else set()
+    for node in wf.nodes:
+        if node.id == node_id:
+            return node
+        if node.sub_workflow is None or node.sub_workflow.id in seen:
+            continue
+        seen.add(node.sub_workflow.id)
+        found = _find_within(node.sub_workflow, node_id, seen)
+        if found is not None:
+            return found
+    return None
 
 
 def _node_of(wf, node_id):
@@ -336,6 +476,24 @@ def set_iteration(wf, data):
 
 
 # --- 카드 삭제 보호 ---------------------------------------------------------------
+
+def workflows_using_workflow(workflow_id):
+    """이 워크플로를 노드로 품고 있는 워크플로 이름들. 휴지통에 있는 것도 센다.
+
+    카드와 **같은 규칙**이다. 규칙을 따로 쓰지 않는 것이 중요하다 — 두 벌이 되면
+    한쪽만 고치는 날이 오고, 그때 새는 쪽은 아무 오류도 내지 않는다.
+
+    DB 에도 `RESTRICT` 가 걸려 있지만 그건 마지막 방어선이다. 거기까지 가면
+    사람은 「무결성 제약 위반」 이라는 말을 보게 되고, 무엇을 먼저 치워야 하는지
+    알 수 없다.
+    """
+    rows = (db.session.query(Workflow.name, Workflow.deleted_at)
+            .join(WorkflowNode, WorkflowNode.workflow_id == Workflow.id)
+            .filter(WorkflowNode.sub_workflow_id == workflow_id)
+            .distinct().all())
+    return [f'{name} (휴지통)' if deleted_at else name
+            for name, deleted_at in rows]
+
 
 def workflows_using_card(card_id):
     """이 카드를 쓰고 있는 워크플로 이름들. 휴지통에 있는 것도 센다.

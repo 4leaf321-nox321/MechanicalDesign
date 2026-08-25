@@ -24,11 +24,21 @@
  * 여기서 지키는 것 하나: **수렴하지 못한 블록은 통째로 `failed` 다.** 마지막
  * 값을 답처럼 돌려주지 않는다. 그렇게 두면 위의 규칙이 저절로 뒤 노드를 막아
  * 주므로, 반복을 위해 새 규칙을 만들 필요가 없다.
+ *
+ * ## 자리에 워크플로가 놓일 수 있다
+ *
+ * 그러면 이 함수가 자기를 부른다. 하위 워크플로를 돌리고, 그 **얼굴**만
+ * (`workflowInterface`) 바깥으로 내놓는다 — 안쪽 중간값까지 내보내면 다른
+ * 워크플로가 그 속을 들여다보게 되고, 안을 고칠 때마다 바깥이 깨진다.
+ *
+ * 안쪽 자리는 `노드:변수` 로 적는다. 변수 id 만으로는 못 짚는다 — 같은 카드가
+ * 안에서 두 자리에 놓이면 변수 id 가 똑같기 때문이다.
  */
 
 import { calculateCard } from './calcEngine'
 import { executionBlocks } from './scc'
 import { DEFAULTS, OUTCOME, fixedPoint } from './iterate'
+import { workflowInterface } from './workflowInterface'
 
 export const STATUS = {
   ok: 'ok',
@@ -50,6 +60,18 @@ function iterationSettings(workflow) {
   }
 }
 
+/** 하위 워크플로 안의 한 자리. 변수 id 만으로는 못 짚는다. */
+export function slot(innerNodeId, variableId) {
+  return `${innerNodeId}:${variableId}`
+}
+
+/** 이 노드에서 그 배선이 닿는 칸의 이름. 카드면 변수 id, 워크플로면 안쪽 자리. */
+function keyFor(node, link, side) {
+  const variableId = link[`${side}_variable_id`]
+  if (!node?.sub_workflow) return variableId
+  return slot(link[`${side}_inner_node_id`] ?? node.id, variableId)
+}
+
 /** 저장된 입력에서 숫자 하나. 키가 문자열일 수도 숫자일 수도 있다. */
 function storedValue(node, variableId, overrides) {
   const raw = (overrides?.[node.id] || {})[variableId]
@@ -65,8 +87,12 @@ function storedValue(node, variableId, overrides) {
  * @param cardVariables `{ [cardId]: [variable, ...] }`
  * @param overrides     `{ [nodeId]: { [variableId]: 값 } }` — 화면에서 임시로 바꾼 값.
  *                      저장된 입력보다 우선하고, **연결보다는 뒤진다.**
+ * @param depth         중첩된 층. 하위 워크플로를 돌 때 자기가 올린다.
  */
-export function runWorkflow(workflow, cardVariables, overrides = {}) {
+//: 펼칠 수 있는 깊이. 순환은 막지만 깊이 자체가 실수일 수 있다.
+const MAX_DEPTH = 12
+
+export function runWorkflow(workflow, cardVariables, overrides = {}, depth = 0) {
   const nodes = workflow?.nodes || []
   const links = workflow?.links || []
   const settings = iterationSettings(workflow)
@@ -107,7 +133,7 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
           + ` (${got.error})`)
         continue
       }
-      values[link.to_variable_id] = got.value
+      values[keyFor(node, link, 'to')] = got.value
     }
     return { values, blockedBy }
   }
@@ -116,12 +142,15 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
   const fromFinished = (link) => {
     const from = out[link.from_node_id]
     if (!from || from.status !== STATUS.ok) return { blocked: true }
-    const result = from.results[link.from_variable_id]
+    const source = nodeById.get(String(link.from_node_id))
+    const result = from.results[keyFor(source, link, 'from')]
     if (!result || result.error) return { error: result?.error || '값 없음' }
     return { value: result.value }
   }
 
   const calculate = (node, values) => {
+    if (node.sub_workflow) return runNested(node, values)
+
     const variables = cardVariables?.[node.card_id] || []
     const { results } = calculateCard(variables, values)
     const failed = Object.entries(results).filter(([, r]) => r && r.error)
@@ -149,9 +178,80 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
       : (broken[0] || done.message)
   }
 
-  const trashed = () => ({
+  /**
+   * 자리에 놓인 워크플로를 돌린다.
+   *
+   * 밖에서 들어온 값(`values`)은 `노드:변수` 로 적혀 있다. 그것을 안쪽
+   * `overrides` 모양으로 풀어 넣고, 나온 결과 중 **얼굴에 있는 것만** 다시
+   * `노드:변수` 로 싸서 내놓는다.
+   *
+   * 안이 하나라도 안 풀리면 이 자리는 실패다. 그러면 「앞이 실패하면 뒤는
+   * 계산하지 않는다」 는 규칙이 바깥에서 저절로 이어진다 — 반복 블록 때와
+   * 같은 이유로 새 규칙을 만들 필요가 없다.
+   */
+  const runNested = (node, values) => {
+    if (depth >= MAX_DEPTH) {
+      return {
+        status: STATUS.failed, values, results: {},
+        message: `워크플로가 ${MAX_DEPTH}겹보다 깊습니다. `
+          + '이쯤이면 사람이 읽을 수 있는 물건이 아닙니다.',
+      }
+    }
+
+    const { inputs, outputs } = workflowInterface(node.sub_workflow, cardVariables)
+
+    // 얼굴의 자리 이름은 **맨 안쪽** 노드를 가리킨다. 두 겹 넘게 들어가면 그
+    // 노드가 바로 아래 층에 없으므로, 어느 자식을 거쳐 가야 하는지를 얼굴이
+    // 함께 들고 있는 `outerNodeId` 로 되짚는다. 이것 없이 곧장 넣으면 값이
+    // 아무 데도 안 닿고 **오류도 안 난다** — 조용히 옛 값으로 계산된다.
+    const through = new Map()
+    for (const face of inputs) through.set(String(face.nodeId), face.outerNodeId)
+
+    const inner = {}
+    for (const [key, value] of Object.entries(values)) {
+      const [innerNodeId, variableId] = String(key).split(':')
+      if (variableId === undefined) continue
+      const child = String(through.get(innerNodeId) ?? innerNodeId)
+      if (!inner[child]) inner[child] = {}
+      // 자식이 곧 그 노드면 변수 id 로, 더 아래면 자리 이름 그대로 넘긴다.
+      inner[child][child === innerNodeId ? variableId : key] = value
+    }
+
+    const ran = runWorkflow(node.sub_workflow, cardVariables, inner, depth + 1)
+
+    // 얼굴에 있는 것만 내놓는다. 안쪽 중간값까지 내보내면 다른 워크플로가
+    // 그 속을 들여다보게 되고, 안을 고칠 때마다 바깥이 깨진다.
+    const results = {}
+    for (const face of outputs) {
+      const child = String(face.outerNodeId ?? face.nodeId)
+      const key = child === String(face.nodeId)
+        ? face.variableId
+        : slot(face.nodeId, face.variableId)
+      const cell = ran.nodes?.[child]?.results?.[key]
+      if (cell) results[slot(face.nodeId, face.variableId)] = cell
+    }
+
+    const broken = Object.values(ran.nodes || {})
+      .filter(r => r.status !== STATUS.ok)
+    if (broken.length) {
+      return {
+        status: STATUS.failed, values, results,
+        // 안에서 무엇이 왜 막혔는지 그대로 올린다. 「하위 워크플로 실패」
+        // 만으로는 어느 카드를 열어야 하는지 알 수 없다.
+        message: `'${node.alias}' 안에서 ${broken.length}개가 계산되지`
+          + ` 않았습니다 — ${broken[0].message}`,
+        inner: ran,
+      }
+    }
+
+    return { status: STATUS.ok, values, results, message: '', inner: ran }
+  }
+
+  const trashed = (node) => ({
     status: STATUS.blocked,
-    message: '이 노드의 카드가 휴지통에 있습니다.',
+    message: node?.sub_workflow_deleted
+      ? '이 자리의 워크플로가 휴지통에 있습니다.'
+      : '이 노드의 카드가 휴지통에 있습니다.',
     values: {}, results: {},
   })
 
@@ -166,7 +266,10 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
 
   // --- 한 번만 도는 블록 ---------------------------------------------------------
   const runOnce = (node) => {
-    if (node.card_deleted) { out[node.id] = trashed(); return }
+    if (node.card_deleted || node.sub_workflow_deleted) {
+      out[node.id] = trashed(node)
+      return
+    }
     const { values, blockedBy } = gather(node, fromFinished)
     out[node.id] = blockedBy.length
       ? blockedResult(values, blockedBy)
@@ -189,8 +292,8 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
     }
 
     for (const node of members) {
-      if (node.card_deleted) {
-        stop('반복 블록 안의 카드가 휴지통에 있습니다.')
+      if (node.card_deleted || node.sub_workflow_deleted) {
+        stop('반복 블록 안의 카드나 워크플로가 휴지통에 있습니다.')
         return
       }
     }
@@ -213,7 +316,7 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
     const seed = {}
     for (const link of block.feedback) {
       const target = nodeById.get(String(link.to_node_id))
-      const value = storedValue(target, link.to_variable_id, overrides)
+      const value = storedValue(target, keyFor(target, link, 'to'), overrides)
       if (value === null) {
         stop(`'${target?.alias}' 의 ${link.to_label || '입력'} 에 초기 추정값이`
           + ' 없습니다. 되먹임으로 들어오는 값은 시작할 숫자가 필요합니다.')
@@ -232,7 +335,8 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
           if (feedbackIds.has(String(link.id))) return { value: current[link.id] }
           const from = turn[link.from_node_id]
           if (!from || from.status !== STATUS.ok) return { blocked: true }
-          const result = from.results[link.from_variable_id]
+          const source = nodeById.get(String(link.from_node_id))
+          const result = from.results[keyFor(source, link, 'from')]
           if (!result || result.error) return { error: result?.error || '값 없음' }
           return { value: result.value }
         })
@@ -251,7 +355,9 @@ export function runWorkflow(workflow, cardVariables, overrides = {}) {
 
       const next = {}
       for (const link of block.feedback) {
-        next[link.id] = turn[link.from_node_id].results[link.from_variable_id].value
+        const source = nodeById.get(String(link.from_node_id))
+        next[link.id] =
+          turn[link.from_node_id].results[keyFor(source, link, 'from')].value
       }
       return { next, detail: turn }
     }

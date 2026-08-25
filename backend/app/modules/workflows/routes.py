@@ -101,7 +101,7 @@ def lookup_workflow():
     if wf is None or not wf.is_visible_to(current_user()):
         raise AppError('MD-WF-0101', '워크플로를 찾을 수 없습니다.', status=404)
 
-    return jsonify(wf.to_dict(full=True))
+    return jsonify(services.expand(wf))
 
 
 @workflows_bp.route('/<int:workflow_id>', methods=['GET'])
@@ -117,7 +117,9 @@ def get_workflow(workflow_id):
     # 계산기가 안다. 서버가 같은 것을 다른 말로 한 번 더 구현하면 두 벌이
     # 되고, 두 벌은 반드시 어긋난다 — 그때 새는 쪽은 오류를 내지 않는다.
     wf = services.get_visible(workflow_id, current_user())
-    return jsonify(wf.to_dict(full=True))
+    # 하위 워크플로를 통째로 실어 보낸다. 층마다 따로 부르게 두면 그중
+    # 하나가 늦게 와서 그림이 반쯤 그려진 상태가 생긴다.
+    return jsonify(services.expand(wf))
 
 
 @workflows_bp.route('', methods=['POST'])
@@ -196,6 +198,16 @@ def purge_workflow(workflow_id):
     if not wf.is_deleted:
         raise AppError('MD-WF-0104',
                        '먼저 휴지통으로 옮긴 뒤에 완전 삭제할 수 있습니다.', status=409)
+
+    # 다른 워크플로가 이것을 노드로 품고 있으면 그 자리가 통째로 뜻을 잃는다.
+    # 무엇을 먼저 치워야 하는지 이름으로 말해 준다.
+    users = services.workflows_using_workflow(wf.id)
+    if users:
+        raise AppError(
+            'MD-WF-0129',
+            f"'{wf.name}' 을(를) 쓰고 있는 워크플로가 있습니다: "
+            f"{', '.join(users)}. 거기서 먼저 빼 주세요.",
+            status=409)
 
     db.session.delete(wf)
     db.session.commit()
@@ -281,8 +293,14 @@ def add_node(workflow_id):
     services.assert_can_edit(wf, actor)
 
     data = request.get_json() or {}
-    node = services.add_node(wf, data.get('card_id'), data.get('alias', ''),
-                             data.get('layout_x', 0), data.get('layout_y', 0))
+    node = services.add_node(
+        wf,
+        card_id=data.get('card_id'),
+        alias=data.get('alias', ''),
+        layout_x=data.get('layout_x', 0),
+        layout_y=data.get('layout_y', 0),
+        sub_workflow_id=data.get('sub_workflow_id'),
+    )
     return jsonify(node.to_dict()), 201
 
 
@@ -365,9 +383,13 @@ def add_link(workflow_id):
     services.assert_can_edit(wf, actor)
 
     data = request.get_json() or {}
-    link = services.add_link(wf,
-                             data.get('from_node_id'), data.get('from_variable_id'),
-                             data.get('to_node_id'), data.get('to_variable_id'))
+    link = services.add_link(
+        wf,
+        data.get('from_node_id'), data.get('from_variable_id'),
+        data.get('to_node_id'), data.get('to_variable_id'),
+        from_inner_node_id=data.get('from_inner_node_id'),
+        to_inner_node_id=data.get('to_inner_node_id'),
+    )
     return jsonify(link.to_dict()), 201
 
 
