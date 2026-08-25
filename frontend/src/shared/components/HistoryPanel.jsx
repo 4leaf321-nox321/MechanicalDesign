@@ -26,14 +26,14 @@ const Overlay = styled.div`
 const Panel = styled.div`
   width: min(560px, 100%);
   height: 100%;
-  background: #f7f8fa;
+  background: hsl(var(--surface-2));
   display: flex;
   flex-direction: column;
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18);
 `
 
 const Head = styled.div`
-  background: #1a1a2e;
+  background: hsl(var(--fg));
   color: white;
   padding: 20px 24px;
   display: flex;
@@ -57,7 +57,7 @@ const CloseBtn = styled.button`
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.35);
   color: white;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 6px 12px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -72,9 +72,9 @@ const Body = styled.div`
 `
 
 const Entry = styled.div`
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e8e8ee;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
   padding: 14px 16px;
   margin-bottom: 12px;
 `
@@ -89,31 +89,31 @@ const EntryHead = styled.div`
 
 const Who = styled.span`
   font-weight: 700;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   font-size: 0.9rem;
 `
 
 const When = styled.span`
   font-size: 0.8rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 /** 기계가 고친 것. 카드 목록의 "AI 작성" 과 같은 색으로 맞춘다. */
 const AiTag = styled.span`
-  background: #eef2ff;
-  color: #4053b8;
-  border: 1px solid #c9d2f5;
-  border-radius: 4px;
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
+  border: 1px solid hsl(var(--accent) / 0.35);
+  border-radius: var(--radius-sm);
   padding: 1px 7px;
   font-size: 0.72rem;
   font-weight: 700;
 `
 
 const NowTag = styled.span`
-  background: #eef7ee;
-  color: #2f6b34;
-  border: 1px solid #cbe5cb;
-  border-radius: 4px;
+  background: hsl(var(--ok-soft));
+  color: hsl(var(--ok));
+  border: 1px solid hsl(var(--ok-border));
+  border-radius: var(--radius-sm);
   padding: 1px 7px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -122,7 +122,7 @@ const NowTag = styled.span`
 const Change = styled.div`
   font-size: 0.85rem;
   line-height: 1.6;
-  color: #444;
+  color: hsl(var(--fg-muted));
   padding: 3px 0 3px 12px;
   border-left: 3px solid ${p => p.$color};
   margin-bottom: 4px;
@@ -130,27 +130,27 @@ const Change = styled.div`
 `
 
 const KIND_COLOR = {
-  added: '#2f6b34',
-  removed: '#a4343a',
-  changed: '#b8860b',
+  added: 'hsl(var(--ok))',
+  removed: 'hsl(var(--danger))',
+  changed: 'hsl(var(--warn))',
 }
 
 const RestoreBtn = styled.button`
   margin-top: 10px;
   padding: 6px 14px;
   background: none;
-  border: 1px solid #cfd6e4;
-  color: #3d4d69;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  color: hsl(var(--fg-muted));
+  border-radius: var(--radius);
   font-size: 0.8rem;
   cursor: pointer;
 
-  &:hover:not(:disabled) { background: #eef2f8; }
+  &:hover:not(:disabled) { background: hsl(var(--surface-2)); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `
 
 const Empty = styled.p`
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-size: 0.88rem;
   text-align: center;
   margin-top: 40px;
@@ -158,10 +158,10 @@ const Empty = styled.p`
 `
 
 const ErrorBox = styled.div`
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  color: #a4343a;
-  border-radius: 6px;
+  background: hsl(var(--danger-soft));
+  border: 1px solid hsl(var(--danger-border));
+  color: hsl(var(--danger));
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   margin-bottom: 14px;
@@ -250,10 +250,10 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
                 </EntryHead>
 
                 {entry.changes.length === 0 ? (
-                  <Change $color="#ccc">(내용을 읽지 못했습니다)</Change>
+                  <Change $color="hsl(var(--border-strong))">(내용을 읽지 못했습니다)</Change>
                 ) : (
                   entry.changes.map((change, i) => (
-                    <Change key={i} $color={KIND_COLOR[change.kind] || '#ccc'}>
+                    <Change key={i} $color={KIND_COLOR[change.kind] || 'hsl(var(--border-strong))'}>
                       {change.text}
                     </Change>
                   ))

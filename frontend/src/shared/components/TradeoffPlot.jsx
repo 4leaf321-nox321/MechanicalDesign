@@ -11,6 +11,7 @@
 import React, { useEffect, useRef } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import styled from 'styled-components'
+import { useChartColors } from '../theme/chartColors'
 
 const Box = styled.div`
   width: 100%;
@@ -18,9 +19,10 @@ const Box = styled.div`
   margin-top: 18px;
 `
 
-const COLORS = ['#3498db', '#e67e22', '#16a085', '#8e44ad']
+// 계열을 가르는 색은 판마다 다르다 — `chartColors` 가 준다.
 
 function TradeoffPlot({ result, xLabel, yLabel, title }) {
+  const chart = useChartColors()
   const ref = useRef(null)
 
   useEffect(() => {
@@ -32,7 +34,7 @@ function TradeoffPlot({ result, xLabel, yLabel, title }) {
       type: 'scatter',
       mode: 'lines+markers',
       name: result.branches.length > 1 ? `해 ${i + 1}` : '조합',
-      line: { color: COLORS[i % COLORS.length], width: 2 },
+      line: { color: chart.series[i % chart.series.length], width: 2 },
       marker: { size: 5 },
       // 곡선 위 점 하나하나가 "이 조합이면 목표가 나온다" 는 뜻이다.
       hovertemplate: `${xLabel} = %{x}<br>${yLabel} = %{y}<extra></extra>`,
@@ -46,7 +48,8 @@ function TradeoffPlot({ result, xLabel, yLabel, title }) {
       yaxis: { title: { text: yLabel }, zeroline: false },
       showlegend: result.branches.length > 1,
       font: { family: 'inherit', size: 11 },
-      plot_bgcolor: '#fbfcfd',
+      plot_bgcolor: chart.plot,
+      paper_bgcolor: chart.paper,
     }, { displayModeBar: false, responsive: true })
 
     const el = ref.current

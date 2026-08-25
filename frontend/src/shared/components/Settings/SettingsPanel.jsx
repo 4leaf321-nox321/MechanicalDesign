@@ -30,8 +30,8 @@ const Overlay = styled.div`
 const Modal = styled.div`
   width: 80vw;
   height: 80vh;
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -43,14 +43,14 @@ const ModalHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 20px 28px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid hsl(var(--border));
   flex-shrink: 0;
 `
 
 const ModalTitle = styled.h2`
   font-size: 1.3rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0;
 `
 
@@ -58,16 +58,16 @@ const CloseButton = styled.button`
   background: none;
   border: none;
   font-size: 1.5rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
-  &:hover { background: #f0f0f0; color: #333; }
+  border-radius: var(--radius-sm);
+  &:hover { background: hsl(var(--bg)); color: hsl(var(--fg)); }
 `
 
 const TabBar = styled.div`
   display: flex;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid hsl(var(--border));
   padding: 0 28px;
   flex-shrink: 0;
 `
@@ -78,13 +78,13 @@ const Tab = styled.button`
   background: none;
   font-size: 0.95rem;
   font-weight: 500;
-  color: ${props => props.$active ? '#3498db' : '#888'};
-  border-bottom: 2px solid ${props => props.$active ? '#3498db' : 'transparent'};
+  color: ${props => props.$active ? 'hsl(var(--primary))' : 'hsl(var(--fg-subtle))'};
+  border-bottom: 2px solid ${props => props.$active ? 'hsl(var(--primary))' : 'transparent'};
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    color: #3498db;
+    color: hsl(var(--primary));
   }
 `
 
@@ -104,14 +104,14 @@ const ModalBody = styled.div`
 const AddButton = styled.button`
   width: 100%;
   padding: 12px;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
-  background: white;
-  color: #888;
+  border: 2px dashed hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-subtle));
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s;
-  &:hover { border-color: #3498db; color: #3498db; background: #f8fbff; }
+  &:hover { border-color: hsl(var(--primary)); color: hsl(var(--primary)); background: hsl(var(--info-soft)); }
 `
 
 /**
@@ -133,9 +133,9 @@ const VarGrid = styled.div`
 `
 
 const VariableCard = styled.div`
-  background: #f8f9fa;
-  border: 1px solid ${p => p.$dragging ? '#3498db' : '#e9ecef'};
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid ${p => p.$dragging ? 'hsl(var(--primary))' : 'hsl(var(--surface-2))'};
+  border-radius: var(--radius);
   padding: 16px;
   opacity: ${p => p.$dragging ? 0.4 : 1};
   display: flex;
@@ -147,8 +147,8 @@ const VariableCard = styled.div`
 
 /** 맨 뒤에 놓을 때. 마지막 카드 뒤에는 칠할 카드가 없어 빈 칸 하나를 세운다. */
 const DropTail = styled.div`
-  border: 2px dashed #3498db;
-  border-radius: 8px;
+  border: 2px dashed hsl(var(--primary));
+  border-radius: var(--radius);
   min-height: 56px;
   opacity: 0.7;
 `
@@ -159,13 +159,13 @@ const DragHandle = styled.div`
   justify-content: center;
   width: 22px;
   flex-shrink: 0;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   cursor: grab;
   font-size: 1rem;
   line-height: 1;
   user-select: none;
-  border-radius: 4px;
-  &:hover { background: #e9ecef; color: #555; }
+  border-radius: var(--radius-sm);
+  &:hover { background: hsl(var(--surface-2)); color: hsl(var(--fg-muted)); }
   &:active { cursor: grabbing; }
 `
 
@@ -186,7 +186,7 @@ const VarBody = styled.div`
  * 아무것도 밀리지 않는다.
  */
 const dropEdge = (side) => `
-  box-shadow: inset ${side === 'left' ? '3px 0 0 0' : '0 3px 0 0'} #3498db;
+  box-shadow: inset ${side === 'left' ? '3px 0 0 0' : '0 3px 0 0'} hsl(var(--primary));
 `
 
 const VarHeader = styled.div`
@@ -198,7 +198,7 @@ const VarHeader = styled.div`
 
 const VarName = styled.span`
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   font-size: 0.95rem;
 `
 
@@ -210,23 +210,23 @@ const VarActions = styled.div`
 const IconBtn = styled.button`
   background: none;
   border: none;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
-  &:hover { background: #e9ecef; color: ${props => props.$danger ? '#e74c3c' : '#333'}; }
+  &:hover { background: hsl(var(--surface-2)); color: ${props => props.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg))'}; }
 `
 
 const Badge = styled.span`
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 500;
   margin-right: 6px;
-  background: ${props => props.$bg || '#eee'};
-  color: ${props => props.$color || '#666'};
+  background: ${props => props.$bg || 'hsl(var(--border))'};
+  color: ${props => props.$color || 'hsl(var(--fg-muted))'};
 `
 
 const VarMeta = styled.div`
@@ -239,13 +239,13 @@ const VarMeta = styled.div`
 
 const VarDetail = styled.span`
   font-size: 0.8rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 const EmptyState = styled.div`
   text-align: center;
   padding: 48px 24px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.95rem;
 `
 
@@ -491,22 +491,22 @@ function SettingsPanel({ cardId, onClose }) {
   }
 
   const getCategoryBadge = (category) => {
-    if (category === 'input') return <Badge $bg="#e3f2fd" $color="#1976d2">Input</Badge>
-    if (category === 'intermediate') return <Badge $bg="#fff8e1" $color="#f57c00">Intermediate</Badge>
-    return <Badge $bg="#fce4ec" $color="#c62828">Output</Badge>
+    if (category === 'input') return <Badge $bg="hsl(var(--primary-soft))" $color="hsl(var(--primary))">Input</Badge>
+    if (category === 'intermediate') return <Badge $bg="hsl(var(--warn-soft))" $color="hsl(var(--warn))">Intermediate</Badge>
+    return <Badge $bg="hsl(var(--danger-soft))" $color="hsl(var(--danger))">Output</Badge>
   }
 
   const getTypeBadge = (varType) => {
     const map = {
-      slider: { label: '슬라이더', bg: '#e8f5e9', color: '#2e7d32' },
-      text: { label: '텍스트', bg: '#fff3e0', color: '#e65100' },
-      dropdown: { label: '드롭다운', bg: '#ede7f6', color: '#5e35b1' },
-      formula: { label: '수식', bg: '#f3e5f5', color: '#7b1fa2' },
-      table: { label: '테이블', bg: '#e0f7fa', color: '#00838f' },
-      interp_table: { label: '보간 테이블', bg: '#e0f2f1', color: '#00695c' },
-      conditional: { label: '조건부', bg: '#fff3e0', color: '#ef6c00' },
+      slider: { label: '슬라이더', bg: 'hsl(var(--ok-soft))', color: 'hsl(var(--ok))' },
+      text: { label: '텍스트', bg: 'hsl(var(--warn-soft))', color: 'hsl(var(--warn))' },
+      dropdown: { label: '드롭다운', bg: 'hsl(var(--accent-soft))', color: 'hsl(var(--accent))' },
+      formula: { label: '수식', bg: 'hsl(var(--accent-soft))', color: 'hsl(var(--accent))' },
+      table: { label: '테이블', bg: 'hsl(var(--info-soft))', color: 'hsl(var(--info))' },
+      interp_table: { label: '보간 테이블', bg: 'hsl(var(--info-soft))', color: 'hsl(var(--info))' },
+      conditional: { label: '조건부', bg: 'hsl(var(--warn-soft))', color: 'hsl(var(--warn))' },
     }
-    const info = map[varType] || { label: varType, bg: '#eee', color: '#666' }
+    const info = map[varType] || { label: varType, bg: 'hsl(var(--border))', color: 'hsl(var(--fg-muted))' }
     return <Badge $bg={info.bg} $color={info.color}>{info.label}</Badge>
   }
 
@@ -669,7 +669,7 @@ function SettingsPanel({ cardId, onClose }) {
                           })()}
                           {/* 여러 컨테이너에 놓일 수 있으므로 배치마다 하나씩 */}
                           {placedContainerIds(v).map(cid => (
-                            <Badge key={cid} $bg="#e0f2f1" $color="#00695c">
+                            <Badge key={cid} $bg="hsl(var(--info-soft))" $color="hsl(var(--info))">
                               {getContainerName(cid)}
                             </Badge>
                           ))}

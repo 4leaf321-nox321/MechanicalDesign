@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import styled from 'styled-components'
 import Plotly from 'plotly.js-dist-min'
+import { useChartColors } from '../../theme/chartColors'
 
 const Wrapper = styled.div`
   display: flex;
@@ -15,17 +16,17 @@ const Toolbar = styled.div`
   gap: 8px;
   flex-wrap: wrap;
   font-size: 0.82rem;
-  color: #555;
+  color: hsl(var(--fg-muted));
 `
 
 const Select = styled.select`
   padding: 4px 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
-  background: white;
+  background: hsl(var(--surface));
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const PlotHost = styled.div`
@@ -35,10 +36,11 @@ const PlotHost = styled.div`
 
 const Hint = styled.div`
   font-size: 0.75rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 function ParallelCoordsPlot({ rows, keys, labels }) {
+  const chart = useChartColors()
   const plotRef = useRef(null)
 
   const numericKeys = useMemo(() => (
@@ -79,8 +81,7 @@ function ParallelCoordsPlot({ rows, keys, labels }) {
       line: {
         color: colorVals,
         colorscale: [
-          [0, '#e3f2fd'], [0.25, '#1976d2'], [0.5, '#4caf50'],
-          [0.75, '#ff9800'], [1, '#d32f2f'],
+          ...chart.scale,
         ],
         showscale: !!colorBy,
         colorbar: colorBy ? { title: labels[colorBy] || colorBy, thickness: 12, len: 0.9 } : undefined,
@@ -90,8 +91,8 @@ function ParallelCoordsPlot({ rows, keys, labels }) {
 
     const layout = {
       margin: { l: 60, r: 60, t: 40, b: 40 },
-      paper_bgcolor: '#ffffff',
-      plot_bgcolor: '#fafafa',
+      paper_bgcolor: chart.paper,
+      plot_bgcolor: chart.plot,
       autosize: true,
     }
 
@@ -117,7 +118,7 @@ function ParallelCoordsPlot({ rows, keys, labels }) {
           <option value="">(단색)</option>
           {numericKeys.map(k => <option key={k} value={k}>{labels[k] || k}</option>)}
         </Select>
-        <span style={{ color: '#aaa', fontSize: '0.75rem' }}>
+        <span style={{ color: 'hsl(var(--fg-subtle))', fontSize: '0.75rem' }}>
           💡 축 라벨 드래그로 순서 변경, 축 위 드래그로 범위 필터
         </span>
       </Toolbar>

@@ -20,9 +20,9 @@ const ImgGrid = styled.div`
 `
 
 const Card = styled.div`
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius);
   padding: 14px 16px;
   display: flex;
   align-items: center;
@@ -33,9 +33,9 @@ const Thumb = styled.img`
   width: 72px;
   height: 72px;
   object-fit: contain;
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   flex-shrink: 0;
 `
 
@@ -50,7 +50,7 @@ const Meta = styled.div`
 const Filename = styled.div`
   font-weight: 600;
   font-size: 0.9rem;
-  color: #333;
+  color: hsl(var(--fg));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -58,24 +58,24 @@ const Filename = styled.div`
 
 const Select = styled.select`
   padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.85rem;
   outline: none;
-  background: white;
+  background: hsl(var(--surface));
   cursor: pointer;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const IconBtn = styled.button`
   background: none;
   border: none;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
-  &:hover { background: #fee; color: #e74c3c; }
+  &:hover { background: hsl(var(--danger-soft)); color: hsl(var(--danger)); }
 `
 
 const UploadRow = styled.div`
@@ -87,21 +87,21 @@ const UploadRow = styled.div`
 
 const FileButton = styled.label`
   padding: 10px 20px;
-  background: white;
-  color: #3498db;
-  border: 1px dashed #3498db;
-  border-radius: 6px;
+  background: hsl(var(--surface));
+  color: hsl(var(--primary));
+  border: 1px dashed hsl(var(--primary));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  &:hover { background: #f0f8ff; }
+  &:hover { background: hsl(var(--primary-soft)); }
   input { display: none; }
 `
 
 const FileName = styled.span`
   font-size: 0.85rem;
-  color: #666;
+  color: hsl(var(--fg-muted));
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -111,27 +111,27 @@ const FileName = styled.span`
 
 const AddBtn = styled.button`
   padding: 10px 20px;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  &:hover { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const EmptyState = styled.div`
   text-align: center;
   padding: 48px 24px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.95rem;
 `
 
 const ErrorMsg = styled.p`
-  color: #e74c3c;
+  color: hsl(var(--danger));
   font-size: 0.85rem;
   margin: 8px 0 0 0;
 `

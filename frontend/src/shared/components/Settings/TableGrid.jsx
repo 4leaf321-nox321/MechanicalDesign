@@ -15,9 +15,9 @@ import styled from 'styled-components'
 import { parseClipboardMatrix } from '../../utils/clipboard'
 
 const Wrap = styled.div`
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
   overflow: auto;
   max-height: ${p => p.$maxHeight || '300px'};
 `
@@ -29,9 +29,9 @@ const TableEl = styled.table`
 `
 
 const Th = styled.th`
-  background: #f1f3f5;
-  border-bottom: 1px solid #ddd;
-  border-right: 1px solid #eee;
+  background: hsl(var(--surface-2));
+  border-bottom: 1px solid hsl(var(--border));
+  border-right: 1px solid hsl(var(--border));
   padding: 0;
   min-width: 100px;
   position: relative;
@@ -39,8 +39,8 @@ const Th = styled.th`
 `
 
 const Td = styled.td`
-  border-bottom: 1px solid #f0f0f0;
-  border-right: 1px solid #f0f0f0;
+  border-bottom: 1px solid hsl(var(--bg));
+  border-right: 1px solid hsl(var(--bg));
   padding: 0;
   &:last-child { border-right: none; }
 `
@@ -55,9 +55,9 @@ const HeaderInput = styled.input`
   outline: none;
   box-sizing: border-box;
   cursor: text;
-  &:hover:not(:focus) { background: #eef2f5; }
-  &:focus { background: #e3f2fd; }
-  &:disabled { cursor: default; color: #555; }
+  &:hover:not(:focus) { background: hsl(var(--surface-2)); }
+  &:focus { background: hsl(var(--primary-soft)); }
+  &:disabled { cursor: default; color: hsl(var(--fg-muted)); }
 `
 
 const CellInput = styled.input`
@@ -68,8 +68,8 @@ const CellInput = styled.input`
   font-size: 0.85rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { background: #e3f2fd; }
-  &:disabled { color: #555; }
+  &:focus { background: hsl(var(--primary-soft)); }
+  &:disabled { color: hsl(var(--fg-muted)); }
 `
 
 const ColRemoveBtn = styled.button`
@@ -82,19 +82,19 @@ const ColRemoveBtn = styled.button`
   padding: 0;
   border: none;
   background: transparent;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   cursor: pointer;
   font-size: 0.9rem;
   line-height: 1;
-  border-radius: 3px;
-  &:hover { background: #fee; color: #e74c3c; }
+  border-radius: var(--radius-sm);
+  &:hover { background: hsl(var(--danger-soft)); color: hsl(var(--danger)); }
 `
 
 const RowRemoveCell = styled.td`
   width: 32px;
   text-align: center;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafbfc;
+  border-bottom: 1px solid hsl(var(--bg));
+  background: hsl(var(--surface-2));
 `
 
 const RowRemoveBtn = styled.button`
@@ -103,12 +103,12 @@ const RowRemoveBtn = styled.button`
   padding: 0;
   border: none;
   background: transparent;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   cursor: pointer;
   font-size: 0.85rem;
   line-height: 1;
-  border-radius: 3px;
-  &:hover { background: #fee; color: #e74c3c; }
+  border-radius: var(--radius-sm);
+  &:hover { background: hsl(var(--danger-soft)); color: hsl(var(--danger)); }
 `
 
 // 표 **위**에 놓는다. 라벨 → 버튼 → 표 순서라 표를 훑고 내려가지 않아도 된다.
@@ -120,18 +120,18 @@ const Actions = styled.div`
 
 const ActionBtn = styled.button`
   padding: 6px 12px;
-  border: 1px dashed #bbb;
-  background: white;
-  color: #666;
-  border-radius: 5px;
+  border: 1px dashed hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   cursor: pointer;
-  &:hover { border-color: #3498db; color: #3498db; }
+  &:hover { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
 `
 
 const Hint = styled.p`
   font-size: 0.78rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   margin: 8px 0 0 0;
   line-height: 1.5;
 `
@@ -280,7 +280,7 @@ export function TableGrid({
                   )}
                 </Th>
               ))}
-              <Th style={{ width: 32, minWidth: 32, background: '#f1f3f5' }} />
+              <Th style={{ width: 32, minWidth: 32, background: 'hsl(var(--surface-2))' }} />
             </tr>
           </thead>
           <tbody>

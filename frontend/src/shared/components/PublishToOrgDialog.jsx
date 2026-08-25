@@ -30,8 +30,8 @@ const Backdrop = styled.div`
 `
 
 const Box = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   width: min(460px, 92vw);
   max-height: 82vh;
   display: flex;
@@ -41,19 +41,19 @@ const Box = styled.div`
 
 const Head = styled.div`
   padding: 20px 24px 12px;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: 1px solid hsl(var(--border));
 `
 
 const Title = styled.h3`
   margin: 0 0 4px;
   font-size: 1.05rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
 `
 
 const Sub = styled.p`
   margin: 0;
   font-size: 0.82rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   line-height: 1.5;
 `
 
@@ -70,10 +70,10 @@ const Item = styled.label`
   padding: 8px 24px 8px ${(p) => 24 + p.$depth * 16}px;
   cursor: pointer;
   font-size: 0.88rem;
-  color: #374151;
+  color: hsl(var(--fg-muted));
 
   &:hover {
-    background: #f6f7f9;
+    background: hsl(var(--surface-2));
   }
 `
 
@@ -86,7 +86,7 @@ const Caret = styled.button`
   background: none;
   padding: 0;
   cursor: ${(p) => (p.$has ? 'pointer' : 'default')};
-  color: #9aa3af;
+  color: hsl(var(--fg-subtle));
   font-size: 0.62rem;
   line-height: 1;
   transform: rotate(${(p) => (p.$open ? 90 : 0)}deg);
@@ -103,21 +103,21 @@ const Name = styled.span`
     또 거는 것은 대개 필요 없다 — 모르면 같은 카드를 겹쳐 걸게 된다. */
 const InheritTag = styled.span`
   font-size: 0.68rem;
-  color: #8b93a1;
+  color: hsl(var(--fg-subtle));
   flex-shrink: 0;
 `
 
 const Empty = styled.div`
   padding: 24px;
   text-align: center;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   font-size: 0.85rem;
   line-height: 1.6;
 `
 
 const Foot = styled.div`
   padding: 12px 24px 18px;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid hsl(var(--border));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -125,7 +125,7 @@ const Foot = styled.div`
 `
 
 const Err = styled.span`
-  color: #c0392b;
+  color: hsl(var(--danger));
   font-size: 0.8rem;
   flex: 1;
 `
@@ -133,8 +133,8 @@ const Err = styled.span`
 const CloseBtn = styled.button`
   padding: 8px 18px;
   border: none;
-  border-radius: 6px;
-  background: #1a1a2e;
+  border-radius: var(--radius);
+  background: hsl(var(--fg));
   color: white;
   cursor: pointer;
   font-size: 0.85rem;

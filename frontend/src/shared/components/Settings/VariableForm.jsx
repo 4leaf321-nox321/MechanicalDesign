@@ -11,16 +11,16 @@ import TableGrid, { shiftColumnIndex } from './TableGrid'
 // Styled Components
 // ============================================
 const FormWrapper = styled.div`
-  background: #f8f9fa;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   padding: 24px;
 `
 
 const FormTitle = styled.h3`
   font-size: 1rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 20px 0;
 `
 
@@ -32,38 +32,38 @@ const Label = styled.label`
   display: block;
   font-size: 0.85rem;
   font-weight: 500;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin-bottom: 6px;
 `
 
 const Input = styled.input`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
 const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
-  background: white;
+  background: hsl(var(--surface));
   cursor: pointer;
 
   &:focus {
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
@@ -88,7 +88,7 @@ const ButtonRow = styled.div`
 
 const Button = styled.button`
   padding: 9px 20px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -97,20 +97,20 @@ const Button = styled.button`
 `
 
 const CancelBtn = styled(Button)`
-  background: #e9ecef;
-  color: #666;
-  &:hover { background: #dee2e6; }
+  background: hsl(var(--surface-2));
+  color: hsl(var(--fg-muted));
+  &:hover { background: hsl(var(--border)); }
 `
 
 const SaveBtn = styled(Button)`
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
-  &:hover { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const ErrorMsg = styled.p`
-  color: #e74c3c;
+  color: hsl(var(--danger));
   font-size: 0.85rem;
   margin: 0 0 12px 0;
 `
@@ -118,18 +118,18 @@ const ErrorMsg = styled.p`
 const TypeLabel = styled.span`
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
-  background: #f3e5f5;
-  color: #7b1fa2;
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
   font-weight: 500;
 `
 
 const FormulaTextarea = styled.textarea`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-family: 'Consolas', 'Monaco', monospace;
   outline: none;
@@ -139,13 +139,13 @@ const FormulaTextarea = styled.textarea`
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #7b1fa2;
+    border-color: hsl(var(--accent));
   }
 `
 
 const FormulaHint = styled.p`
   font-size: 0.78rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   margin: 6px 0 0 0;
   line-height: 1.4;
 `
@@ -158,40 +158,40 @@ const SegmentedRow = styled.div`
 const SegmentBtn = styled.button`
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid ${p => p.$active ? '#3498db' : '#ddd'};
-  background: ${p => p.$active ? '#3498db' : 'white'};
-  color: ${p => p.$active ? 'white' : '#555'};
-  border-radius: 6px;
+  border: 1px solid ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--border))'};
+  background: ${p => p.$active ? 'hsl(var(--primary))' : 'white'};
+  color: ${p => p.$active ? 'white' : 'hsl(var(--fg-muted))'};
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
-  &:hover { border-color: #3498db; }
+  &:hover { border-color: hsl(var(--primary)); }
 `
 
 // 표 **위**에 놓는다(요구사항). 라벨 → 버튼 → 표 순서라 표를 눈으로 훑고
 // 내려가지 않아도 버튼이 먼저 보인다.
 const SmallBtn = styled.button`
   padding: 6px 12px;
-  border: 1px dashed #bbb;
-  background: white;
-  color: #666;
-  border-radius: 5px;
+  border: 1px dashed hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   cursor: pointer;
-  &:hover { border-color: #3498db; color: #3498db; }
+  &:hover { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
 `
 
 // 표 참조 상태 배너. 원본이 있다는 사실과, 여기서 고치면 어디까지 퍼지는지를
 // 항상 눈에 보이게 둔다 — 참조는 편한 만큼 사고도 멀리 퍼진다.
 const RefBanner = styled.div`
-  border: 1px solid ${p => (p.$error ? '#f5c6cb' : '#b3d9f2')};
-  background: ${p => (p.$error ? '#fdecea' : '#eaf4fc')};
-  border-radius: 6px;
+  border: 1px solid ${p => (p.$error ? 'hsl(var(--danger-border))' : 'hsl(var(--primary) / 0.45)')};
+  background: ${p => (p.$error ? 'hsl(var(--danger-soft))' : 'hsl(var(--info-soft))')};
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 0.82rem;
-  color: ${p => (p.$error ? '#a4343a' : '#1565c0')};
+  color: ${p => (p.$error ? 'hsl(var(--danger))' : 'hsl(var(--primary))')};
   line-height: 1.5;
 `
 
@@ -225,13 +225,13 @@ const KeyRow = styled.div`
 const KeyExprInput = styled.input`
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.85rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const OptionRow = styled.div`
@@ -242,13 +242,13 @@ const OptionRow = styled.div`
 
 const OptionRemoveBtn = styled.button`
   width: 32px;
-  border: 1px solid #eee;
-  background: white;
-  color: #bbb;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface));
+  color: hsl(var(--border-strong));
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
-  &:hover { background: #fee; color: #e74c3c; border-color: #fee; }
+  &:hover { background: hsl(var(--danger-soft)); color: hsl(var(--danger)); border-color: hsl(var(--danger-soft)); }
 `
 
 const ColumnNamesGrid = styled.div`
@@ -265,7 +265,7 @@ const ColumnNameField = styled.div`
 
 const ColumnIndexLabel = styled.span`
   font-size: 0.72rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-weight: 500;
 `
 
@@ -279,7 +279,7 @@ const CondBranchRow = styled.div`
 
 const CondLabel = styled.span`
   font-size: 0.78rem;
-  color: #666;
+  color: hsl(var(--fg-muted));
   font-weight: 500;
   white-space: nowrap;
 `
@@ -287,13 +287,13 @@ const CondLabel = styled.span`
 const CondInput = styled.input`
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.85rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const DefaultRow = styled.div`
@@ -303,7 +303,7 @@ const DefaultRow = styled.div`
   gap: 8px;
   margin-top: 8px;
   padding-top: 10px;
-  border-top: 1px dashed #ddd;
+  border-top: 1px dashed hsl(var(--border));
 `
 
 const TemplateBar = styled.div`
@@ -312,27 +312,27 @@ const TemplateBar = styled.div`
   gap: 8px;
   margin-bottom: 10px;
   padding: 8px 10px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 `
 
 const TemplateBarLabel = styled.span`
   font-size: 0.8rem;
   font-weight: 600;
-  color: #475569;
+  color: hsl(var(--fg-muted));
   margin-right: 4px;
 `
 
 const TemplateBtn = styled.button`
   padding: 5px 12px;
-  border: 1px solid #cbd5e1;
-  background: white;
-  color: #475569;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   cursor: pointer;
-  &:hover { border-color: #3498db; color: #3498db; }
+  &:hover { border-color: hsl(var(--primary)); color: hsl(var(--primary)); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `
 
@@ -350,8 +350,8 @@ const TplOverlay = styled.div`
 const TplModal = styled.div`
   width: min(720px, 90vw);
   height: min(720px, 85vh);
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
@@ -363,14 +363,14 @@ const TplHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 18px 24px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid hsl(var(--border));
   flex-shrink: 0;
 `
 
 const TplTitle = styled.h2`
   font-size: 1.1rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0;
 `
 
@@ -378,11 +378,11 @@ const TplCloseBtn = styled.button`
   background: none;
   border: none;
   font-size: 1.4rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   padding: 4px 10px;
-  border-radius: 4px;
-  &:hover { background: #f0f0f0; color: #333; }
+  border-radius: var(--radius-sm);
+  &:hover { background: hsl(var(--bg)); color: hsl(var(--fg)); }
 `
 
 const TplSearchRow = styled.div`
@@ -390,23 +390,23 @@ const TplSearchRow = styled.div`
   align-items: center;
   gap: 10px;
   padding: 14px 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid hsl(var(--bg));
   flex-shrink: 0;
 `
 
 const TplSearchInput = styled.input`
   flex: 1;
   padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.95rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const TplCount = styled.span`
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: hsl(var(--fg-subtle));
   white-space: nowrap;
 `
 
@@ -414,20 +414,20 @@ const TplListBody = styled.div`
   flex: 1;
   overflow-y: auto;
   padding: 8px 14px;
-  background: #fafbfc;
+  background: hsl(var(--surface-2));
 `
 
 const TplCard = styled.div`
-  background: white;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius);
   padding: 12px 14px;
   margin-bottom: 8px;
   cursor: pointer;
   transition: border-color 0.12s, box-shadow 0.12s;
   &:hover {
-    border-color: #3498db;
-    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.15);
+    border-color: hsl(var(--primary));
+    border: 1px solid hsl(var(--border));
   }
 `
 
@@ -441,7 +441,7 @@ const TplCardHeader = styled.div`
 
 const TplCardName = styled.span`
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   font-size: 0.95rem;
   flex: 1;
   min-width: 0;
@@ -453,7 +453,7 @@ const TplCardName = styled.span`
 const TplCardPreview = styled.div`
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.82rem;
-  color: #64748b;
+  color: hsl(var(--fg-muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -461,25 +461,25 @@ const TplCardPreview = styled.div`
 
 const TplCardDate = styled.span`
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: hsl(var(--fg-subtle));
 `
 
 const TplDeleteBtn = styled.button`
   background: none;
   border: 1px solid transparent;
-  color: #cbd5e1;
+  color: hsl(var(--border-strong));
   cursor: pointer;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   flex-shrink: 0;
-  &:hover { background: #fee; color: #e74c3c; border-color: #fee; }
+  &:hover { background: hsl(var(--danger-soft)); color: hsl(var(--danger)); border-color: hsl(var(--danger-soft)); }
 `
 
 const TplEmpty = styled.div`
   padding: 60px 20px;
   text-align: center;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.95rem;
 `
 
@@ -488,46 +488,46 @@ const TplSaveRow = styled.div`
   align-items: center;
   gap: 8px;
   padding: 14px 24px;
-  border-top: 1px solid #eee;
-  background: #f8fafc;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
   flex-shrink: 0;
 `
 
 const TplSaveLabel = styled.span`
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: hsl(var(--fg-muted));
   white-space: nowrap;
 `
 
 const TplNameInput = styled.input`
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const TplSaveBtn = styled.button`
   padding: 8px 18px;
   border: none;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  &:hover { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const TplOverflowHint = styled.div`
   text-align: center;
   padding: 10px;
   font-size: 0.78rem;
-  color: #94a3b8;
+  color: hsl(var(--fg-subtle));
 `
 
 // ============================================
@@ -787,17 +787,17 @@ const AXIS_MATCH_MODES = ['exact', 'nearest', 'floor', 'ceiling', 'interpolate',
 
 const RangeNote = styled.div`
   font-size: 0.75rem;
-  color: #777;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 5px;
+  color: hsl(var(--fg-subtle));
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   margin: 4px 0 8px 0;
   line-height: 1.6;
 `
 
 const RangeBad = styled.span`
-  color: #c0392b;
+  color: hsl(var(--danger));
 `
 
 /**

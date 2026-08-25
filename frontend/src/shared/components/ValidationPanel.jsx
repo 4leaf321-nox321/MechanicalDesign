@@ -31,14 +31,14 @@ const Overlay = styled.div`
 const Panel = styled.div`
   width: min(560px, 100%);
   height: 100%;
-  background: #f7f8fa;
+  background: hsl(var(--surface-2));
   display: flex;
   flex-direction: column;
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18);
 `
 
 const Head = styled.div`
-  background: #1a1a2e;
+  background: hsl(var(--fg));
   color: white;
   padding: 20px 24px;
   display: flex;
@@ -62,7 +62,7 @@ const CloseBtn = styled.button`
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.35);
   color: white;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 6px 12px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -77,15 +77,15 @@ const Body = styled.div`
 `
 
 const Verdict = styled.div`
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 16px;
   font-size: 0.92rem;
   font-weight: 700;
   line-height: 1.5;
-  background: ${p => (p.$ok ? '#eef7ee' : '#fdecea')};
-  border: 1px solid ${p => (p.$ok ? '#cbe5cb' : '#f5c6cb')};
-  color: ${p => (p.$ok ? '#2f6b34' : '#a4343a')};
+  background: ${p => (p.$ok ? 'hsl(var(--ok-soft))' : 'hsl(var(--danger-soft))')};
+  border: 1px solid ${p => (p.$ok ? 'hsl(var(--ok-border))' : 'hsl(var(--danger-border))')};
+  color: ${p => (p.$ok ? 'hsl(var(--ok))' : 'hsl(var(--danger))')};
 `
 
 const Section = styled.div`
@@ -95,35 +95,35 @@ const Section = styled.div`
 const SectionTitle = styled.h3`
   font-size: 0.85rem;
   font-weight: 700;
-  color: #666;
+  color: hsl(var(--fg-muted));
   margin: 0 0 8px 0;
 `
 
 const Item = styled.div`
-  background: white;
-  border: 1px solid #e8e8ee;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
   border-left: 4px solid ${p => p.$color};
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 11px 13px;
   margin-bottom: 8px;
   font-size: 0.86rem;
   line-height: 1.6;
-  color: #333;
+  color: hsl(var(--fg));
   word-break: break-word;
 `
 
 const Where = styled.span`
   display: block;
   font-weight: 700;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   margin-bottom: 2px;
 `
 
 const Skipped = styled.div`
-  background: #fff8e1;
-  border: 1px solid #f0d98c;
-  color: #8a6d1a;
-  border-radius: 6px;
+  background: hsl(var(--warn-soft));
+  border: 1px solid hsl(var(--warn-border));
+  color: hsl(var(--warn));
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   line-height: 1.55;
@@ -134,33 +134,33 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
-  background: white;
-  border: 1px solid #e8e8ee;
-  border-radius: 6px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   overflow: hidden;
 `
 
 const Th = styled.th`
   text-align: left;
   padding: 8px 11px;
-  background: #f4f5f8;
-  color: #666;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--fg-muted));
   font-size: 0.78rem;
   font-weight: 600;
 `
 
 const Td = styled.td`
   padding: 9px 11px;
-  border-top: 1px solid #f2f2f2;
-  color: #333;
+  border-top: 1px solid hsl(var(--surface-2));
+  color: hsl(var(--fg));
 `
 
 const Failed = styled.span`
-  color: #a4343a;
+  color: hsl(var(--danger));
 `
 
 const Empty = styled.p`
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-size: 0.88rem;
   text-align: center;
   margin-top: 40px;
@@ -231,7 +231,7 @@ export default function ValidationPanel({ cardId, cardName, values, onClose }) {
                 <Section>
                   <SectionTitle>계산을 막는 문제</SectionTitle>
                   {errors.map((issue, i) => (
-                    <Item key={i} $color="#a4343a">
+                    <Item key={i} $color="hsl(var(--danger))">
                       {issue.variable_name && (
                         <Where>{issue.variable_name}{issue.symbol ? ` (${issue.symbol})` : ''}</Where>
                       )}
@@ -247,7 +247,7 @@ export default function ValidationPanel({ cardId, cardName, values, onClose }) {
                       계산이 도는 채로 값만 틀리는 것이 가장 위험하다. */}
                   <SectionTitle>확인할 것 (계산은 됩니다)</SectionTitle>
                   {warnings.map((issue, i) => (
-                    <Item key={i} $color="#b8860b">
+                    <Item key={i} $color="hsl(var(--warn))">
                       {issue.variable_name && (
                         <Where>{issue.variable_name}{issue.symbol ? ` (${issue.symbol})` : ''}</Where>
                       )}

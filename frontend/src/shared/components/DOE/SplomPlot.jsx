@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import styled from 'styled-components'
 import Plotly from 'plotly.js-dist-min'
+import { useChartColors } from '../../theme/chartColors'
 
 const Wrapper = styled.div`
   display: flex;
@@ -11,9 +12,9 @@ const Wrapper = styled.div`
 
 const SelectorArea = styled.div`
   padding: 8px 10px;
-  background: #f6f7f9;
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius);
   font-size: 0.82rem;
 `
 
@@ -22,7 +23,7 @@ const TopRow = styled.div`
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  color: #555;
+  color: hsl(var(--fg-muted));
 `
 
 const Chips = styled.div`
@@ -36,16 +37,16 @@ const Chip = styled.span`
   align-items: center;
   gap: 4px;
   padding: 2px 4px 2px 8px;
-  background: #e3f2fd;
-  color: #1976d2;
-  border-radius: 12px;
+  background: hsl(var(--primary-soft));
+  color: hsl(var(--primary));
+  border-radius: var(--radius-lg);
   font-size: 0.78rem;
 `
 
 const ChipClose = styled.button`
   background: transparent;
   border: none;
-  color: #1976d2;
+  color: hsl(var(--primary));
   cursor: pointer;
   width: 16px;
   height: 16px;
@@ -64,13 +65,13 @@ const SearchBox = styled.div`
 const SearchInput = styled.input`
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { border-color: #3498db; }
-  &:disabled { background: #f0f0f0; color: #999; cursor: not-allowed; }
+  &:focus { border-color: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--bg)); color: hsl(var(--fg-subtle)); cursor: not-allowed; }
 `
 
 const Dropdown = styled.div`
@@ -80,9 +81,9 @@ const Dropdown = styled.div`
   right: 0;
   max-height: 220px;
   overflow-y: auto;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   z-index: 10;
 `
@@ -96,14 +97,14 @@ const DropdownItem = styled.button`
   border: none;
   font-size: 0.82rem;
   cursor: pointer;
-  color: #333;
-  &:hover { background: #eef5fb; color: #1976d2; }
-  &:disabled { color: #bbb; cursor: not-allowed; background: transparent; }
+  color: hsl(var(--fg));
+  &:hover { background: #eef5fb; color: hsl(var(--primary)); }
+  &:disabled { color: hsl(var(--border-strong)); cursor: not-allowed; background: transparent; }
 `
 
 const NoMatch = styled.div`
   padding: 8px 10px;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-size: 0.8rem;
 `
 
@@ -114,12 +115,13 @@ const PlotHost = styled.div`
 
 const Hint = styled.div`
   font-size: 0.75rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 const MAX_SELECTION = 6
 
 function SplomPlot({ rows, keys, labels }) {
+  const chart = useChartColors()
   const plotRef = useRef(null)
   const wrapperRef = useRef(null)
 
@@ -195,7 +197,7 @@ function SplomPlot({ rows, keys, labels }) {
       diagonal: { visible: false },
       marker: {
         size: 4,
-        color: '#3498db',
+        color: chart.primary,
         opacity: 0.7,
         line: { color: 'white', width: 0.3 },
       },
@@ -204,8 +206,8 @@ function SplomPlot({ rows, keys, labels }) {
     const layout = {
       dragmode: 'select',
       hovermode: 'closest',
-      plot_bgcolor: '#fafafa',
-      paper_bgcolor: '#ffffff',
+      plot_bgcolor: chart.plot,
+      paper_bgcolor: chart.paper,
       margin: { l: 60, r: 20, t: 20, b: 40 },
       autosize: true,
     }
@@ -230,13 +232,13 @@ function SplomPlot({ rows, keys, labels }) {
       <SelectorArea ref={wrapperRef}>
         <TopRow>
           <span style={{ fontWeight: 500 }}>선택된 변수</span>
-          <span style={{ color: '#888', fontSize: '0.76rem' }}>
+          <span style={{ color: 'hsl(var(--fg-subtle))', fontSize: '0.76rem' }}>
             ({selected.length}/{MAX_SELECTION})
           </span>
         </TopRow>
         <Chips>
           {selected.length === 0 && (
-            <span style={{ color: '#999', fontSize: '0.78rem' }}>(아래 검색으로 변수 추가)</span>
+            <span style={{ color: 'hsl(var(--fg-subtle))', fontSize: '0.78rem' }}>(아래 검색으로 변수 추가)</span>
           )}
           {selected.map(k => (
             <Chip key={k}>

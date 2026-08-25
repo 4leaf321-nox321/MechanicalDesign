@@ -19,9 +19,9 @@ const ContainerGrid = styled.div`
 `
 
 const ContainerCard = styled.div`
-  background: #f8f9fa;
-  border: 1px solid ${p => (p.$editing ? '#3498db' : '#e9ecef')};
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid ${p => (p.$editing ? 'hsl(var(--primary))' : 'hsl(var(--surface-2))')};
+  border-radius: var(--radius);
   padding: 14px 16px;
   display: flex;
   align-items: center;
@@ -34,7 +34,7 @@ const ContainerCard = styled.div`
 
 const ContainerName = styled.span`
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   font-size: 0.95rem;
 `
 
@@ -46,32 +46,32 @@ const Actions = styled.div`
 const IconBtn = styled.button`
   background: none;
   border: none;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
-  &:hover { background: #e9ecef; color: ${props => props.$danger ? '#e74c3c' : '#333'}; }
+  &:hover { background: hsl(var(--surface-2)); color: ${props => props.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg))'}; }
 `
 
 const TypeBadge = styled.span`
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 500;
   margin-left: 8px;
   background: ${props => {
-    if (props.$type === 'input') return '#e3f2fd'
-    if (props.$type === 'output') return '#fce4ec'
-    if (props.$type === 'hidden') return '#eceff1'
-    return '#f5f5f5'
+    if (props.$type === 'input') return 'hsl(var(--primary-soft))'
+    if (props.$type === 'output') return 'hsl(var(--danger-soft))'
+    if (props.$type === 'hidden') return 'hsl(var(--surface-2))'
+    return 'hsl(var(--bg))'
   }};
   color: ${props => {
-    if (props.$type === 'input') return '#1976d2'
-    if (props.$type === 'output') return '#c62828'
-    if (props.$type === 'hidden') return '#546e7a'
-    return '#888'
+    if (props.$type === 'input') return 'hsl(var(--primary))'
+    if (props.$type === 'output') return 'hsl(var(--danger))'
+    if (props.$type === 'hidden') return 'hsl(var(--fg-muted))'
+    return 'hsl(var(--fg-subtle))'
   }};
 `
 
@@ -83,37 +83,37 @@ const AddRow = styled.div`
 const Input = styled.input`
   flex: 1;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const Select = styled.select`
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
-  background: white;
+  background: hsl(var(--surface));
   cursor: pointer;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const AddBtn = styled.button`
   padding: 10px 20px;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  &:hover { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const EditRow = styled.div`
@@ -125,12 +125,12 @@ const EditRow = styled.div`
 const EmptyState = styled.div`
   text-align: center;
   padding: 48px 24px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.95rem;
 `
 
 const ErrorMsg = styled.p`
-  color: #e74c3c;
+  color: hsl(var(--danger));
   font-size: 0.85rem;
   margin: 8px 0 0 0;
 `

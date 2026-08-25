@@ -28,11 +28,11 @@ const Head = styled.button`
   cursor: pointer;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
 `
 
 const Caret = styled.span`
-  color: #9aa3af;
+  color: hsl(var(--fg-subtle));
   font-size: 0.7rem;
   transform: rotate(${p => (p.$open ? 90 : 0)}deg);
   transition: transform 0.12s;
@@ -40,7 +40,7 @@ const Caret = styled.span`
 
 const Count = styled.span`
   font-size: 0.8rem;
-  color: #6c5ce7;
+  color: hsl(var(--accent));
   font-weight: 700;
 `
 
@@ -52,19 +52,19 @@ const Grid = styled.div`
 
 /** 카드와 색·모양을 달리한다. 같아 보이면 격자 두 개가 한 덩어리로 읽힌다. */
 const Item = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 20px 22px;
   cursor: pointer;
   position: relative;
-  border-left: 4px solid ${p => p.$color || '#6c5ce7'};
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  border-left: 4px solid ${p => p.$color || 'hsl(var(--accent))'};
+  border: 1px solid hsl(var(--border));
   transition: all 0.2s ease;
 
   ${p => p.$draft && `
-    background: #fffdf6;
-    border: 1px dashed #e0c97a;
-    border-left: 4px solid ${p.$color || '#6c5ce7'};
+    background: hsl(var(--warn-soft));
+    border: 1px dashed hsl(var(--warn-border));
+    border-left: 4px solid ${p.$color || 'hsl(var(--accent))'};
   `}
 
   &:hover {
@@ -80,20 +80,20 @@ const Item = styled.div`
 const Name = styled.h4`
   margin: 0 0 6px;
   font-size: 1.05rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
 `
 
 const Desc = styled.p`
   margin: 0 0 10px;
   font-size: 0.84rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.45;
 `
 
 /** 몇 장을 어떻게 이었는지. 열기 전에 규모를 알 수 있어야 한다. */
 const Shape = styled.div`
   font-size: 0.76rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
 `
 
 const TagRow = styled.div`
@@ -105,21 +105,21 @@ const TagRow = styled.div`
 
 const Tag = styled.span`
   display: inline-block;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
   font-size: 0.7rem;
   font-weight: 700;
-  background: #fff4d6;
-  color: #8a6d1a;
-  border: 1px solid #f0d98c;
+  background: hsl(var(--warn-soft));
+  color: hsl(var(--warn));
+  border: 1px solid hsl(var(--warn-border));
 `
 
 const OrgChip = styled.span`
   font-size: 0.68rem;
   padding: 2px 7px;
   border-radius: 999px;
-  background: #efeaff;
-  color: #5b4bb5;
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
 `
 
 const DeleteBtn = styled.button`
@@ -128,42 +128,42 @@ const DeleteBtn = styled.button`
   right: 10px;
   background: none;
   border: none;
-  color: #ccc;
+  color: hsl(var(--border-strong));
   font-size: 1rem;
   cursor: pointer;
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transition: all 0.2s;
 
   &:hover {
-    background: #fee;
-    color: #e74c3c;
+    background: hsl(var(--danger-soft));
+    color: hsl(var(--danger));
   }
 `
 
 const AddItem = styled.div`
-  border: 2px dashed #dcd6f5;
-  border-radius: 10px;
+  border: 2px dashed hsl(var(--accent) / 0.35);
+  border-radius: var(--radius);
   padding: 20px 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #8878d6;
+  color: hsl(var(--accent));
   cursor: pointer;
   font-size: 0.9rem;
   min-height: 92px;
 
   &:hover {
-    border-color: #6c5ce7;
-    color: #6c5ce7;
+    border-color: hsl(var(--accent));
+    color: hsl(var(--accent));
   }
 `
 
 const Empty = styled.div`
   font-size: 0.85rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.6;
   padding: 4px 0 8px;
 `

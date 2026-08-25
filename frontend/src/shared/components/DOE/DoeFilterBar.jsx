@@ -14,9 +14,9 @@ import styled from 'styled-components'
 import { OPERATORS } from '../../utils/doeFilter'
 
 const Bar = styled.div`
-  background: #f8f9fb;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   padding: 12px 14px;
   margin-bottom: 14px;
 `
@@ -31,27 +31,27 @@ const Head = styled.div`
 const Title = styled.span`
   font-size: 0.82rem;
   font-weight: 700;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
 `
 
 const Summary = styled.span`
   font-size: 0.82rem;
-  color: ${p => (p.$none ? '#a33a2c' : '#34618c')};
+  color: ${p => (p.$none ? 'hsl(var(--danger))' : 'hsl(var(--info))')};
   margin-left: auto;
 `
 
 const Toggle = styled.button`
-  border: 1px solid #d5dae2;
-  background: white;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 5px 12px;
   font-size: 0.78rem;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
@@ -65,52 +65,52 @@ const Row = styled.div`
 
 const Select = styled.select`
   padding: 7px 9px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.83rem;
-  background: white;
+  background: hsl(var(--surface));
 `
 
 const Num = styled.input`
   width: 110px;
   padding: 7px 9px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.83rem;
 `
 
 const Small = styled.button`
   border: none;
   background: none;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   cursor: pointer;
   font-size: 0.9rem;
   padding: 2px 6px;
 
   &:hover {
-    color: #c0392b;
+    color: hsl(var(--danger));
   }
 `
 
 const AddBtn = styled.button`
-  border: 1px dashed #cbd2dc;
+  border: 1px dashed hsl(var(--border-strong));
   background: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 6px 12px;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
 const Note = styled.div`
   margin-top: 10px;
   font-size: 0.78rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.6;
 `
 
@@ -162,7 +162,7 @@ function DoeFilterBar({ keys, labels, conditions, onChange, summary, hint }) {
                    placeholder="값" />
               {c.op === 'between' && (
                 <>
-                  <span style={{ color: '#98a2b3', fontSize: '0.8rem' }}>~</span>
+                  <span style={{ color: 'hsl(var(--fg-subtle))', fontSize: '0.8rem' }}>~</span>
                   <Num value={c.value2} onChange={(e) => update(i, { value2: e.target.value })}
                        placeholder="값" />
                 </>

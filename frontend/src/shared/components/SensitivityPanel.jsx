@@ -15,16 +15,16 @@ import { DEFAULT_PERCENT, sensitivity } from '../utils/sensitivity'
 import { fixedInputs, fmt } from '../utils/goalSeek'
 
 const Wrap = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 22px 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid hsl(var(--border));
 `
 
 const Intro = styled.p`
   margin: 0 0 18px;
   font-size: 0.87rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   line-height: 1.6;
 `
 
@@ -40,25 +40,25 @@ const Field = styled.label`
   flex-direction: column;
   gap: 5px;
   font-size: 0.78rem;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
   font-weight: 600;
 `
 
 const Select = styled.select`
   padding: 9px 10px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 400;
-  background: white;
+  background: hsl(var(--surface));
   min-width: 200px;
 `
 
 const Num = styled.input`
   width: 90px;
   padding: 9px 10px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 400;
 `
@@ -66,15 +66,15 @@ const Num = styled.input`
 const Held = styled.div`
   margin-top: 18px;
   padding: 12px 14px;
-  background: #f8f9fb;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 `
 
 const HeldLabel = styled.div`
   font-size: 0.75rem;
   font-weight: 700;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   margin-bottom: 8px;
 `
 
@@ -88,20 +88,20 @@ const HeldItem = styled.span`
   font-size: 0.78rem;
   padding: 3px 9px;
   border-radius: 999px;
-  background: ${p => (p.$blank ? '#fdecea' : '#eef2f7')};
-  color: ${p => (p.$blank ? '#a4343a' : '#4b5563')};
-  border: 1px solid ${p => (p.$blank ? '#f5c6cb' : '#dfe3ea')};
+  background: ${p => (p.$blank ? 'hsl(var(--danger-soft))' : 'hsl(var(--info-soft))')};
+  color: ${p => (p.$blank ? 'hsl(var(--danger))' : 'hsl(var(--fg-muted))')};
+  border: 1px solid ${p => (p.$blank ? 'hsl(var(--danger-border))' : 'hsl(var(--border))')};
 `
 
 const Msg = styled.div`
   margin-top: 18px;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.86rem;
   line-height: 1.6;
-  background: ${p => (p.$bad ? '#fdf3f2' : '#f1f7fd')};
-  border: 1px solid ${p => (p.$bad ? '#f5d9d6' : '#cfe3f7')};
-  color: ${p => (p.$bad ? '#a33a2c' : '#34618c')};
+  background: ${p => (p.$bad ? 'hsl(var(--danger-soft))' : 'hsl(var(--info-soft))')};
+  border: 1px solid ${p => (p.$bad ? 'hsl(var(--danger-border))' : 'hsl(var(--info-border))')};
+  color: ${p => (p.$bad ? 'hsl(var(--danger))' : 'hsl(var(--info))')};
 `
 
 const Chart = styled.div`
@@ -118,7 +118,7 @@ const RowLine = styled.div`
 
 const Name = styled.div`
   font-size: 0.84rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,8 +129,8 @@ const Name = styled.div`
 const Track = styled.div`
   position: relative;
   height: 20px;
-  background: #f6f7f9;
-  border-radius: 4px;
+  background: hsl(var(--surface-2));
+  border-radius: var(--radius-sm);
 
   /* 지금 값 자리. 막대가 어느 쪽으로 갔는지 이 선이 없으면 알 수 없다. */
   &::after {
@@ -140,7 +140,7 @@ const Track = styled.div`
     top: -3px;
     bottom: -3px;
     width: 1px;
-    background: #cbd2dc;
+    background: hsl(var(--border-strong));
   }
 `
 
@@ -148,27 +148,27 @@ const Bar = styled.div`
   position: absolute;
   top: 3px;
   bottom: 3px;
-  background: ${p => (p.$down ? '#e08b6a' : '#5b9bd5')};
-  border-radius: 2px;
+  background: ${p => (p.$down ? 'hsl(var(--warn))' : 'hsl(var(--primary))')};
+  border-radius: var(--radius-sm);
 `
 
 const Delta = styled.div`
   font-size: 0.76rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   font-variant-numeric: tabular-nums;
 `
 
 const Skipped = styled.div`
   margin-top: 16px;
   font-size: 0.78rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.6;
 `
 
 const Note = styled.div`
   margin-top: 14px;
   font-size: 0.78rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.6;
 `
 

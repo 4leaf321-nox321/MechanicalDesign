@@ -10,8 +10,8 @@ const Wrapper = styled.div`
 `
 
 const GroupBox = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   padding: 20px 24px;
 `
@@ -19,10 +19,10 @@ const GroupBox = styled.div`
 const GroupTitle = styled.h3`
   font-size: 1.05rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 14px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid #e9ecef;
+  border-bottom: 2px solid hsl(var(--surface-2));
 `
 
 const CardGrid = styled.div`
@@ -33,9 +33,9 @@ const CardGrid = styled.div`
 
 const VarCard = styled.div`
   padding: 10px 12px;
-  border: 1px solid #eef0f2;
-  border-radius: 8px;
-  background: #fafbfc;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface-2));
 `
 
 const Header = styled.div`
@@ -48,12 +48,12 @@ const Header = styled.div`
 const Name = styled.div`
   font-size: 0.9rem;
   font-weight: 500;
-  color: #444;
+  color: hsl(var(--fg-muted));
 `
 
 const Sym = styled.span`
   font-size: 0.78rem;
-  color: #7b1fa2;
+  color: hsl(var(--accent));
   font-family: 'Consolas', 'Monaco', monospace;
   margin-left: 6px;
 `
@@ -61,19 +61,19 @@ const Sym = styled.span`
 const Toggle = styled.div`
   display: inline-flex;
   gap: 4px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   overflow: hidden;
 `
 
 const ToggleBtn = styled.button`
   padding: 4px 10px;
   font-size: 0.78rem;
-  background: ${p => p.$active ? '#3498db' : 'white'};
-  color: ${p => p.$active ? 'white' : '#666'};
+  background: ${p => p.$active ? 'hsl(var(--primary))' : 'white'};
+  color: ${p => p.$active ? 'white' : 'hsl(var(--fg-muted))'};
   border: none;
   cursor: pointer;
-  &:hover { background: ${p => p.$active ? '#3498db' : '#f0f0f0'}; }
+  &:hover { background: ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--bg))'}; }
 `
 
 const Row = styled.div`
@@ -88,29 +88,29 @@ const Field = styled.label`
   flex-direction: column;
   gap: 3px;
   font-size: 0.72rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
 `
 
 const NumInput = styled.input`
   padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const TextInput = styled(NumInput).attrs({ as: 'input' })``
 
 const TextArea = styled.textarea`
   padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   outline: none;
   min-height: 54px;
   font-family: inherit;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const CheckGrid = styled.div`
@@ -118,8 +118,8 @@ const CheckGrid = styled.div`
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 4px 10px;
   padding: 6px 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
 `
 
 const CheckLabel = styled.label`
@@ -133,7 +133,7 @@ const CheckLabel = styled.label`
 const PreviewHint = styled.div`
   margin-top: 6px;
   font-size: 0.72rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 function parseDropdownOptions(v) {
@@ -189,7 +189,7 @@ function renderFixedInput(v, spec, onChange) {
           <select
             value={spec?.value ?? opts[0] ?? ''}
             onChange={(e) => setValue(e.target.value)}
-            style={{ padding: '6px 8px', border: '1px solid #ddd', borderRadius: 5, fontSize: '0.85rem' }}
+            style={{ padding: '6px 8px', border: '1px solid hsl(var(--border))', borderRadius: 5, fontSize: '0.85rem' }}
           >
             {opts.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
@@ -326,7 +326,7 @@ function DoeInputPanel({ inputVars, containers, specs, onChange, method = 'facto
               <Name>
                 {v.name}
                 {v.symbol && <Sym>({v.symbol})</Sym>}
-                {v.unit && <span style={{ fontSize: '0.75rem', color: '#999', marginLeft: 6 }}>[{v.unit}]</span>}
+                {v.unit && <span style={{ fontSize: '0.75rem', color: 'hsl(var(--fg-subtle))', marginLeft: 6 }}>[{v.unit}]</span>}
               </Name>
               {/* 배열은 인자가 될 수 없으므로 고정/범위를 고를 것이 없다.
                   버튼을 남겨 두면 눌러 놓고 왜 안 바뀌는지 묻게 된다. */}

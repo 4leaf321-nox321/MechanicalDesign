@@ -12,9 +12,9 @@ const Layout = styled.div`
 `
 
 const Panel = styled.div`
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -32,10 +32,10 @@ const StickyPanel = styled(Panel)`
 const PanelTitle = styled.h4`
   font-size: 0.9rem;
   font-weight: 600;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin: 0 0 10px 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid hsl(var(--surface-2));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -44,13 +44,13 @@ const PanelTitle = styled.h4`
 const ContainerLabel = styled.span`
   font-size: 0.95rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
 `
 
 const ContainerSub = styled.span`
   font-size: 0.7rem;
   font-weight: 500;
-  color: #888;
+  color: hsl(var(--fg-subtle));
 `
 
 const RightList = styled.div`
@@ -66,8 +66,8 @@ const DropZone = styled.div`
   flex-direction: column;
   gap: 6px;
   padding: 6px;
-  border-radius: 6px;
-  background: ${p => p.$over ? '#e3f2fd' : 'transparent'};
+  border-radius: var(--radius);
+  background: ${p => p.$over ? 'hsl(var(--primary-soft))' : 'transparent'};
   transition: background 0.15s;
   ${p => p.$scrollable
     ? 'overflow-y: auto; min-height: 0;'
@@ -75,9 +75,9 @@ const DropZone = styled.div`
 `
 
 const WidgetCard = styled.div`
-  background: white;
-  border: 1px solid ${p => p.$dragging ? '#3498db' : '#e0e0e0'};
-  border-radius: 6px;
+  background: hsl(var(--surface));
+  border: 1px solid ${p => p.$dragging ? 'hsl(var(--primary))' : 'hsl(var(--border))'};
+  border-radius: var(--radius);
   padding: 8px 10px;
   display: flex;
   align-items: center;
@@ -87,52 +87,52 @@ const WidgetCard = styled.div`
   user-select: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 
-  &:hover { border-color: #3498db; box-shadow: 0 2px 6px rgba(52, 152, 219, 0.15); }
+  &:hover { border-color: hsl(var(--primary)); box-shadow: 0 2px 6px rgba(52, 152, 219, 0.15); }
   &:active { cursor: grabbing; }
 `
 
 const DropIndicator = styled.div`
   height: 2px;
-  background: #3498db;
-  border-radius: 1px;
+  background: hsl(var(--primary));
+  border-radius: var(--radius-sm);
   margin: 0 4px;
 `
 
 const KindBadge = styled.span`
   display: inline-block;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.7rem;
   font-weight: 600;
-  background: ${p => p.$kind === 'image' ? '#e0f7fa' : '#ede7f6'};
-  color: ${p => p.$kind === 'image' ? '#00838f' : '#5e35b1'};
+  background: ${p => p.$kind === 'image' ? 'hsl(var(--info-soft))' : 'hsl(var(--accent-soft))'};
+  color: ${p => p.$kind === 'image' ? 'hsl(var(--info))' : 'hsl(var(--accent))'};
   flex-shrink: 0;
 `
 
 const CategoryBadge = styled.span`
   display: inline-block;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.68rem;
   font-weight: 500;
   background: ${p => {
-    if (p.$cat === 'input') return '#e3f2fd'
-    if (p.$cat === 'intermediate') return '#fff8e1'
-    if (p.$cat === 'output') return '#fce4ec'
-    return '#eee'
+    if (p.$cat === 'input') return 'hsl(var(--primary-soft))'
+    if (p.$cat === 'intermediate') return 'hsl(var(--warn-soft))'
+    if (p.$cat === 'output') return 'hsl(var(--danger-soft))'
+    return 'hsl(var(--border))'
   }};
   color: ${p => {
-    if (p.$cat === 'input') return '#1976d2'
-    if (p.$cat === 'intermediate') return '#f57c00'
-    if (p.$cat === 'output') return '#c62828'
-    return '#666'
+    if (p.$cat === 'input') return 'hsl(var(--primary))'
+    if (p.$cat === 'intermediate') return 'hsl(var(--warn))'
+    if (p.$cat === 'output') return 'hsl(var(--danger))'
+    return 'hsl(var(--fg-muted))'
   }};
   flex-shrink: 0;
 `
 
 const WidgetName = styled.span`
   font-size: 0.9rem;
-  color: #333;
+  color: hsl(var(--fg));
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -142,7 +142,7 @@ const WidgetName = styled.span`
 
 const SymbolText = styled.span`
   font-size: 0.75rem;
-  color: #7b1fa2;
+  color: hsl(var(--accent));
   font-family: 'Consolas', 'Monaco', monospace;
   flex-shrink: 0;
 `
@@ -151,15 +151,15 @@ const Thumb = styled.img`
   width: 32px;
   height: 32px;
   object-fit: contain;
-  background: #fafafa;
-  border: 1px solid #eee;
-  border-radius: 3px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 `
 
 const EmptyHint = styled.div`
   padding: 12px 8px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.8rem;
   text-align: center;
 `
@@ -175,21 +175,21 @@ const UsageBadge = styled.span`
   font-size: 0.7rem;
   font-weight: 700;
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   flex-shrink: 0;
-  background: ${p => (p.$count > 0 ? '#e3f2fd' : '#f0f0f0')};
-  color: ${p => (p.$count > 0 ? '#1565c0' : '#bbb')};
+  background: ${p => (p.$count > 0 ? 'hsl(var(--primary-soft))' : 'hsl(var(--bg))')};
+  color: ${p => (p.$count > 0 ? 'hsl(var(--primary))' : 'hsl(var(--border-strong))')};
 `
 
 const PaletteHint = styled.div`
   font-size: 0.72rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   line-height: 1.45;
   padding: 0 2px 8px 2px;
 `
 
 const ErrorMsg = styled.p`
-  color: #e74c3c;
+  color: hsl(var(--danger));
   font-size: 0.85rem;
   margin: 0 0 12px 0;
 `

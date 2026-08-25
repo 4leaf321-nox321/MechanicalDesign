@@ -21,8 +21,8 @@ const Center = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2f5;
-  color: #888;
+  background: hsl(var(--bg));
+  color: hsl(var(--fg-subtle));
   font-size: 0.95rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `

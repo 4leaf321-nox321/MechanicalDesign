@@ -16,10 +16,10 @@ import { tradeoffCurve } from '../utils/tradeoff'
 import TradeoffPlot from './TradeoffPlot'
 
 const Wrap = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 22px 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid hsl(var(--border));
 `
 
 const Modes = styled.div`
@@ -30,12 +30,12 @@ const Modes = styled.div`
 
 const ModeBtn = styled.button`
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.84rem;
   cursor: pointer;
-  border: 1px solid ${p => (p.$on ? '#1a1a2e' : '#d5dae2')};
-  background: ${p => (p.$on ? '#1a1a2e' : 'white')};
-  color: ${p => (p.$on ? 'white' : '#4b5563')};
+  border: 1px solid ${p => (p.$on ? 'hsl(var(--fg))' : 'hsl(var(--border-strong))')};
+  background: ${p => (p.$on ? 'hsl(var(--fg))' : 'white')};
+  color: ${p => (p.$on ? 'white' : 'hsl(var(--fg-muted))')};
 
   &:disabled {
     opacity: 0.45;
@@ -46,7 +46,7 @@ const ModeBtn = styled.button`
 const Intro = styled.p`
   margin: 0 0 18px;
   font-size: 0.87rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   line-height: 1.6;
 `
 
@@ -62,23 +62,23 @@ const Field = styled.label`
   flex-direction: column;
   gap: 5px;
   font-size: 0.78rem;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
   font-weight: 600;
 `
 
 const Select = styled.select`
   padding: 9px 10px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 400;
-  background: white;
+  background: hsl(var(--surface));
 `
 
 const Input = styled.input`
   padding: 9px 10px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 400;
 `
@@ -86,15 +86,15 @@ const Input = styled.input`
 const Fixed = styled.div`
   margin-top: 18px;
   padding: 12px 14px;
-  background: #f8f9fb;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 `
 
 const FixedLabel = styled.div`
   font-size: 0.75rem;
   font-weight: 700;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   margin-bottom: 8px;
 `
 
@@ -108,15 +108,15 @@ const FixedItem = styled.span`
   font-size: 0.78rem;
   padding: 3px 9px;
   border-radius: 999px;
-  background: ${p => (p.$blank ? '#fdecea' : '#eef2f7')};
-  color: ${p => (p.$blank ? '#a4343a' : '#4b5563')};
-  border: 1px solid ${p => (p.$blank ? '#f5c6cb' : '#dfe3ea')};
+  background: ${p => (p.$blank ? 'hsl(var(--danger-soft))' : 'hsl(var(--info-soft))')};
+  color: ${p => (p.$blank ? 'hsl(var(--danger))' : 'hsl(var(--fg-muted))')};
+  border: 1px solid ${p => (p.$blank ? 'hsl(var(--danger-border))' : 'hsl(var(--border))')};
 `
 
 const FixedWarn = styled.div`
   margin-top: 8px;
   font-size: 0.78rem;
-  color: #a4343a;
+  color: hsl(var(--danger));
 `
 
 const RunRow = styled.div`
@@ -130,8 +130,8 @@ const RunRow = styled.div`
 const RunBtn = styled.button`
   padding: 10px 22px;
   border: none;
-  border-radius: 6px;
-  background: #1a1a2e;
+  border-radius: var(--radius);
+  background: hsl(var(--fg));
   color: white;
   font-size: 0.9rem;
   cursor: pointer;
@@ -145,12 +145,12 @@ const RunBtn = styled.button`
 const Msg = styled.div`
   margin-top: 18px;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.86rem;
   line-height: 1.6;
-  background: ${p => (p.$bad ? '#fdf3f2' : '#f1f7fd')};
-  border: 1px solid ${p => (p.$bad ? '#f5d9d6' : '#cfe3f7')};
-  color: ${p => (p.$bad ? '#a33a2c' : '#34618c')};
+  background: ${p => (p.$bad ? 'hsl(var(--danger-soft))' : 'hsl(var(--info-soft))')};
+  border: 1px solid ${p => (p.$bad ? 'hsl(var(--danger-border))' : 'hsl(var(--info-border))')};
+  color: ${p => (p.$bad ? 'hsl(var(--danger))' : 'hsl(var(--info))')};
 `
 
 const Answers = styled.div`
@@ -161,45 +161,45 @@ const Answers = styled.div`
 `
 
 const Answer = styled.div`
-  border: 1px solid #cfe3f7;
-  border-radius: 8px;
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
   padding: 14px 16px;
-  background: #f8fbff;
+  background: hsl(var(--info-soft));
 `
 
 const AnswerValue = styled.div`
   font-size: 1.3rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   margin-bottom: 4px;
 `
 
 const AnswerMeta = styled.div`
   font-size: 0.78rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   line-height: 1.5;
 `
 
 const ApplyBtn = styled.button`
   margin-top: 10px;
   padding: 6px 12px;
-  border: 1px solid #cfe3f7;
-  border-radius: 6px;
-  background: white;
-  color: #34618c;
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--info));
   font-size: 0.78rem;
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
 const Note = styled.div`
   margin-top: 14px;
   font-size: 0.78rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   line-height: 1.6;
 `
 

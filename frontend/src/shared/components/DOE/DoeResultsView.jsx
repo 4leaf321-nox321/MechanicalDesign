@@ -20,37 +20,37 @@ const Toolbar = styled.div`
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  background: white;
+  background: hsl(var(--surface));
   padding: 12px 16px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
 `
 
 const Info = styled.div`
   font-size: 0.9rem;
-  color: #444;
+  color: hsl(var(--fg-muted));
 `
 
 const Button = styled.button`
   padding: 8px 14px;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  &:hover { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const CarouselArea = styled.div`
   display: flex;
   align-items: stretch;
   gap: 12px;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
   padding: 14px;
   /* 상단 스택(약 280px) + 하단 dot/여백(약 60px) + 여유 마진(약 40px) 제외 */
   height: max(420px, calc(100vh - 380px));
@@ -59,16 +59,16 @@ const CarouselArea = styled.div`
 const ArrowBtn = styled.button`
   width: 44px;
   flex-shrink: 0;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  color: #555;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--surface-2));
+  border-radius: var(--radius);
+  color: hsl(var(--fg-muted));
   font-size: 1.6rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  &:hover { background: #e9ecef; color: #333; }
+  &:hover { background: hsl(var(--surface-2)); color: hsl(var(--fg)); }
 `
 
 const Page = styled.div`
@@ -83,9 +83,9 @@ const VizPanel = styled.div`
   display: flex;
   flex-direction: column;
   padding: 10px 12px;
-  border: 1px solid #eef0f2;
-  border-radius: 8px;
-  background: #fafbfc;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface-2));
   min-width: 0;
 `
 
@@ -95,19 +95,19 @@ const VizHeader = styled.div`
   justify-content: space-between;
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #eef0f2;
+  border-bottom: 1px solid hsl(var(--border));
 `
 
 const VizTitle = styled.h3`
   font-size: 0.92rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0;
 `
 
 const VizSub = styled.span`
   font-size: 0.72rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 const VizBody = styled.div`
@@ -130,30 +130,30 @@ const Dot = styled.button`
   padding: 0;
   border-radius: 50%;
   border: none;
-  background: ${p => p.$active ? '#3498db' : '#cfd4d9'};
+  background: ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--border-strong))'};
   cursor: pointer;
-  &:hover { background: ${p => p.$active ? '#3498db' : '#a0a6ac'}; }
+  &:hover { background: ${p => p.$active ? 'hsl(var(--primary))' : 'hsl(var(--fg-subtle))'}; }
 `
 
 const TablePanel = styled.div`
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
   padding: 16px 18px;
 `
 
 const PanelTitle = styled.h3`
   font-size: 0.95rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 10px 0;
 `
 
 const TableWrap = styled.div`
   overflow: auto;
   max-height: 600px;
-  border: 1px solid #eee;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 `
 
 const Table = styled.table`
@@ -166,42 +166,42 @@ const Table = styled.table`
 const Th = styled.th`
   position: sticky;
   top: 0;
-  background: #f1f3f5;
-  color: #333;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--fg));
   font-weight: 600;
   padding: 8px 12px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid hsl(var(--border));
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
   text-align: left;
-  &:hover { background: #e9ecef; }
+  &:hover { background: hsl(var(--surface-2)); }
 `
 
 const SpacerTh = styled.th`
   position: sticky;
   top: 0;
-  background: #f1f3f5;
-  border-bottom: 1px solid #ddd;
+  background: hsl(var(--surface-2));
+  border-bottom: 1px solid hsl(var(--border));
   width: 100%;
 `
 
 const Td = styled.td`
   padding: 6px 12px;
-  border-bottom: 1px solid #f3f4f5;
+  border-bottom: 1px solid hsl(var(--border));
   white-space: nowrap;
-  color: ${p => p.$error ? '#e74c3c' : '#333'};
+  color: ${p => p.$error ? 'hsl(var(--danger))' : 'hsl(var(--fg))'};
 `
 
 const SpacerTd = styled.td`
-  border-bottom: 1px solid #f3f4f5;
+  border-bottom: 1px solid hsl(var(--border));
   width: 100%;
 `
 
 const EmptyMsg = styled.div`
   padding: 40px 20px;
   text-align: center;
-  color: #aaa;
+  color: hsl(var(--fg-subtle));
   font-size: 0.9rem;
 `
 
@@ -222,15 +222,15 @@ const FixedBar = styled.div`
   gap: 6px;
   margin-bottom: 12px;
   padding: 10px 12px;
-  background: #f8f9fb;
-  border: 1px solid #e6e9ef;
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 `
 
 const FixedLabel = styled.span`
   font-size: 0.75rem;
   font-weight: 700;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   margin-right: 4px;
 `
 
@@ -238,9 +238,9 @@ const FixedChip = styled.span`
   font-size: 0.78rem;
   padding: 3px 9px;
   border-radius: 999px;
-  background: #eef2f7;
-  color: #4b5563;
-  border: 1px solid #dfe3ea;
+  background: hsl(var(--info-soft));
+  color: hsl(var(--fg-muted));
+  border: 1px solid hsl(var(--border));
 `
 
 function DoeResultsView({ result, variables }) {

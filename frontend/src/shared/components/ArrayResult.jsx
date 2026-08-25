@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import styled from 'styled-components'
+import { useChartColors } from '../theme/chartColors'
 
 const Wrap = styled.div`
   display: flex;
@@ -32,7 +33,7 @@ const Bar = styled.div`
 
 const Summary = styled.span`
   font-size: 0.75rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   margin-right: auto;
   white-space: nowrap;
   overflow: hidden;
@@ -42,13 +43,13 @@ const Summary = styled.span`
 const ViewBtn = styled.button`
   padding: 3px 9px;
   font-size: 0.72rem;
-  border: 1px solid ${p => (p.$active ? '#3498db' : '#ddd')};
-  background: ${p => (p.$active ? '#e3f2fd' : 'white')};
-  color: ${p => (p.$active ? '#1565c0' : '#777')};
-  border-radius: 4px;
+  border: 1px solid ${p => (p.$active ? 'hsl(var(--primary))' : 'hsl(var(--border))')};
+  background: ${p => (p.$active ? 'hsl(var(--primary-soft))' : 'white')};
+  color: ${p => (p.$active ? 'hsl(var(--primary))' : 'hsl(var(--fg-subtle))')};
+  border-radius: var(--radius-sm);
   cursor: pointer;
   flex-shrink: 0;
-  &:hover { border-color: #3498db; }
+  &:hover { border-color: hsl(var(--primary)); }
 `
 
 const PlotBox = styled.div`
@@ -59,9 +60,9 @@ const PlotBox = styled.div`
 const TableWrap = styled.div`
   max-height: 180px;
   overflow: auto;
-  border: 1px solid #eee;
-  border-radius: 5px;
-  background: white;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
+  background: hsl(var(--surface));
 `
 
 const Table = styled.table`
@@ -72,12 +73,12 @@ const Table = styled.table`
   th, td {
     padding: 4px 9px;
     text-align: right;
-    border-bottom: 1px solid #f2f2f2;
+    border-bottom: 1px solid hsl(var(--surface-2));
     white-space: nowrap;
   }
   th {
-    background: #fafbfc;
-    color: #888;
+    background: hsl(var(--surface-2));
+    color: hsl(var(--fg-subtle));
     font-weight: 600;
     font-size: 0.72rem;
     position: sticky;
@@ -85,7 +86,7 @@ const Table = styled.table`
   }
   th:first-child, td:first-child {
     text-align: left;
-    color: #aaa;
+    color: hsl(var(--fg-subtle));
     width: 44px;
   }
   tr:last-child td { border-bottom: none; }
@@ -93,7 +94,7 @@ const Table = styled.table`
 
 const Empty = styled.div`
   font-size: 0.8rem;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   padding: 8px 0;
 `
 
@@ -110,6 +111,7 @@ function formatCell(value) {
 }
 
 function ArrayResult({ values, unit, name }) {
+  const chart = useChartColors()
   // 값을 memo 로 고정한다. 매 렌더마다 새 배열이 만들어지면 아래 effect 가
   // 계속 다시 돌아 Plotly 가 그래프를 처음부터 다시 그린다.
   const list = useMemo(() => (Array.isArray(values) ? values : []), [values])
@@ -133,8 +135,8 @@ function ArrayResult({ values, unit, name }) {
         y: numbers,
         type: 'scatter',
         mode: list.length <= 40 ? 'lines+markers' : 'lines',
-        line: { color: '#3498db', width: 2 },
-        marker: { size: 5, color: '#3498db' },
+        line: { color: chart.primary, width: 2 },
+        marker: { size: 5, color: chart.primary },
         hovertemplate: `%{x}번째: %{y}${unit ? ' ' + unit : ''}<extra></extra>`,
       }],
       {

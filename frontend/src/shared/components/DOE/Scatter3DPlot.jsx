@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import styled from 'styled-components'
 import Plotly from 'plotly.js-dist-min'
+import { useChartColors } from '../../theme/chartColors'
 
 const Wrapper = styled.div`
   display: flex;
@@ -20,17 +21,17 @@ const Field = styled.label`
   display: flex;
   flex-direction: column;
   gap: 2px;
-  color: #666;
+  color: hsl(var(--fg-muted));
 `
 
 const Select = styled.select`
   padding: 5px 7px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
-  background: white;
+  background: hsl(var(--surface));
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const PlotHost = styled.div`
@@ -40,13 +41,14 @@ const PlotHost = styled.div`
 
 const Hint = styled.div`
   font-size: 0.75rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 // rows: [{col: val, ...}]
 // keys: [col1, col2, ...] — 선택 가능한 모든 열
 // labels: { col: displayLabel }
 function Scatter3DPlot({ rows, keys, labels = {} }) {
+  const chart = useChartColors()
   const plotRef = useRef(null)
 
   const defaults = useMemo(() => {
@@ -112,12 +114,11 @@ function Scatter3DPlot({ rows, keys, labels = {} }) {
     const colorStringMode = colorCol && isStringColumn(colorCol)
 
     const defaultScale = [
-      [0, '#e3f2fd'], [0.2, '#1976d2'], [0.4, '#4caf50'],
-      [0.6, '#ff9800'], [0.8, '#f44336'], [1, '#d32f2f'],
+      ...chart.scale,
     ]
 
     const palette = (n) => {
-      const base = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b']
+      const base = chart.series
       const out = []
       for (let i = 0; i < n; i++) out.push(base[i % base.length])
       return out
@@ -154,7 +155,7 @@ function Scatter3DPlot({ rows, keys, labels = {} }) {
           x: indices.map(i => xData[i]),
           y: indices.map(i => yData[i]),
           z: indices.map(i => zData[i]),
-          marker: { size: 5, color: colors[idx], opacity: 0.85, line: { color: '#333', width: 0.5 } },
+          marker: { size: 5, color: colors[idx], opacity: 0.85, line: { color: chart.fg, width: 0.5 } },
           text: indices.map(i => hoverText[i]),
           hovertemplate: '%{text}<extra></extra>',
         }
@@ -174,7 +175,7 @@ function Scatter3DPlot({ rows, keys, labels = {} }) {
           showscale: !!colorCol,
           colorbar: colorCol ? { title: getLabel(colorCol), thickness: 12, len: 0.7, x: 1.02 } : undefined,
           opacity: 0.85,
-          line: { color: '#333', width: 0.5 },
+          line: { color: chart.fg, width: 0.5 },
         },
         text: hoverText,
         hovertemplate: '%{text}<extra></extra>',
@@ -183,10 +184,10 @@ function Scatter3DPlot({ rows, keys, labels = {} }) {
 
     const axisConfig = (col) => {
       const cfg = {
-        title: { text: getLabel(col), font: { size: 12, color: '#495057' } },
-        gridcolor: '#E0E0E0',
+        title: { text: getLabel(col), font: { size: 12, color: chart.muted } },
+        gridcolor: chart.grid,
         showgrid: true,
-        zerolinecolor: '#BDBDBD',
+        zerolinecolor: chart.grid,
       }
       if (stringMap[col]) {
         cfg.tickmode = 'array'
@@ -201,16 +202,16 @@ function Scatter3DPlot({ rows, keys, labels = {} }) {
         xaxis: axisConfig(axes.x),
         yaxis: axisConfig(axes.y),
         zaxis: axisConfig(axes.z),
-        bgcolor: '#FAFAFA',
+        bgcolor: chart.plot,
         camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } },
       },
       margin: { l: 0, r: colorStringMode ? 150 : 50, t: 10, b: 0 },
-      paper_bgcolor: '#FFFFFF',
-      plot_bgcolor: '#FAFAFA',
+      paper_bgcolor: chart.paper,
+      plot_bgcolor: chart.plot,
       showlegend: colorStringMode,
       legend: colorStringMode ? {
         x: 1.02, y: 1, xanchor: 'left', yanchor: 'top',
-        bgcolor: 'rgba(255,255,255,0.9)', bordercolor: '#E0E0E0', borderwidth: 1,
+        bgcolor: chart.paper, bordercolor: chart.grid, borderwidth: 1,
         font: { size: 11 },
       } : undefined,
       autosize: true,

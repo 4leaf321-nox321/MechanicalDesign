@@ -25,19 +25,19 @@ const GridWrapper = styled.div`
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
   }
   .react-grid-placeholder {
-    background: #3498db !important;
+    background: hsl(var(--primary)) !important;
     opacity: 0.15 !important;
-    border-radius: 10px;
+    border-radius: var(--radius);
   }
   .react-resizable-handle::after {
-    border-right-color: ${props => props.$editMode ? '#3498db' : 'transparent'} !important;
-    border-bottom-color: ${props => props.$editMode ? '#3498db' : 'transparent'} !important;
+    border-right-color: ${props => props.$editMode ? 'hsl(var(--primary))' : 'transparent'} !important;
+    border-bottom-color: ${props => props.$editMode ? 'hsl(var(--primary))' : 'transparent'} !important;
   }
 `
 
 const ContainerBox = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   padding: 20px 24px;
   height: 100%;
@@ -45,17 +45,17 @@ const ContainerBox = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: ${props => props.$editMode ? '2px dashed #3498db33' : '2px solid transparent'};
+  border: ${props => props.$editMode ? '2px dashed hsl(var(--primary) / 0.2)' : '2px solid transparent'};
   transition: border-color 0.2s;
 `
 
 const ContainerTitle = styled.h2`
   font-size: 1.05rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 16px 0;
   padding-bottom: 10px;
-  border-bottom: 2px solid #e9ecef;
+  border-bottom: 2px solid hsl(var(--surface-2));
   cursor: ${props => props.$editMode ? 'grab' : 'default'};
   flex-shrink: 0;
   user-select: none;
@@ -70,8 +70,8 @@ const ContainerContent = styled.div`
 
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb {
-    background: #ddd;
-    border-radius: 2px;
+    background: hsl(var(--border));
+    border-radius: var(--radius-sm);
   }
 
   ${props => props.$columns > 1 && `
@@ -95,8 +95,8 @@ const ImageBlock = styled.div`
     display: block;
     width: 100%;
     height: auto;
-    border-radius: 6px;
-    background: #fafafa;
+    border-radius: var(--radius);
+    background: hsl(var(--surface-2));
   }
 `
 
@@ -115,19 +115,19 @@ const LabelRow = styled.div`
 const VarLabel = styled.label`
   font-size: 0.88rem;
   font-weight: 500;
-  color: #444;
+  color: hsl(var(--fg-muted));
 `
 
 const SymbolHint = styled.span`
   font-size: 0.78rem;
-  color: #7b1fa2;
+  color: hsl(var(--accent));
   font-family: 'Consolas', 'Monaco', monospace;
   margin-left: 4px;
 `
 
 const UnitText = styled.span`
   font-size: 0.78rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 const SliderWrapper = styled.div`
@@ -148,8 +148,8 @@ const Slider = styled.input`
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
-  border-radius: 3px;
-  background: #e0e0e0;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--border));
   outline: none;
 
   &::-webkit-slider-thumb {
@@ -158,14 +158,14 @@ const Slider = styled.input`
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #3498db;
+    background: hsl(var(--primary));
     cursor: pointer;
   }
-  &::-webkit-slider-thumb:hover { background: #2980b9; }
+  &::-webkit-slider-thumb:hover { background: hsl(var(--primary)); }
   &::-moz-range-thumb {
     width: 18px; height: 18px;
     border-radius: 50%;
-    background: #3498db;
+    background: hsl(var(--primary));
     cursor: pointer;
     border: none;
   }
@@ -176,7 +176,7 @@ const SliderValue = styled.div`
   text-align: right;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
 `
 
 const SliderRange = styled.div`
@@ -184,7 +184,7 @@ const SliderRange = styled.div`
   justify-content: space-between;
   margin-top: 3px;
   font-size: 0.72rem;
-  color: #bbb;
+  color: hsl(var(--border-strong));
 `
 
 const TextInputWrapper = styled.div`
@@ -196,25 +196,25 @@ const TextInputWrapper = styled.div`
 const TextInput = styled.input`
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const DropdownSelect = styled.select`
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
-  background: white;
+  background: hsl(var(--surface));
   cursor: pointer;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 /**
@@ -226,20 +226,20 @@ const DropdownSelect = styled.select`
  */
 const UnitSelect = styled.select`
   padding: 6px 4px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.82rem;
-  color: #444;
-  background: #fafbfc;
+  color: hsl(var(--fg-muted));
+  background: hsl(var(--surface-2));
   cursor: pointer;
   outline: none;
   min-width: 62px;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const InputUnit = styled.span`
   font-size: 0.85rem;
-  color: #666;
+  color: hsl(var(--fg-muted));
   font-weight: 500;
   min-width: 28px;
 `
@@ -248,10 +248,10 @@ const CalculateBtn = styled.button`
   width: 100%;
   padding: 10px;
   margin-top: 12px;
-  background: linear-gradient(135deg, #3498db, #2980b9);
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)));
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
@@ -259,7 +259,7 @@ const CalculateBtn = styled.button`
   flex-shrink: 0;
 
   &:hover {
-    background: linear-gradient(135deg, #2980b9, #2471a3);
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.8));
     box-shadow: 0 4px 12px rgba(52, 152, 219, 0.35);
   }
   &:active { transform: scale(0.98); }
@@ -270,7 +270,7 @@ const OutputRow = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid hsl(var(--bg));
   &:last-child { border-bottom: none; }
 `
 
@@ -284,33 +284,33 @@ const OutputLabel = styled.div`
 const OutputName = styled.span`
   font-size: 0.88rem;
   font-weight: 500;
-  color: #444;
+  color: hsl(var(--fg-muted));
 `
 
 const OutputSymbol = styled.span`
   font-size: 0.78rem;
-  color: #7b1fa2;
+  color: hsl(var(--accent));
   font-family: 'Consolas', 'Monaco', monospace;
 `
 
 const OutputValue = styled.span`
   font-size: 1rem;
   font-weight: 700;
-  color: ${props => props.$error ? '#e74c3c' : '#2c3e50'};
+  color: ${props => props.$error ? 'hsl(var(--danger))' : 'hsl(var(--fg))'};
   font-family: 'Consolas', 'Monaco', monospace;
   white-space: nowrap;
 `
 
 const OutputFormula = styled.span`
   font-size: 0.72rem;
-  color: #aaa;
+  color: hsl(var(--fg-subtle));
   font-family: 'Consolas', 'Monaco', monospace;
 `
 
 const NoResultMsg = styled.div`
   text-align: center;
   padding: 16px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.85rem;
 `
 
@@ -371,7 +371,7 @@ const OutputBlock = styled.div`
   flex-direction: column;
   gap: 8px;
   padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid hsl(var(--bg));
   min-width: 0;
 
   &:last-child { border-bottom: none; }
@@ -697,10 +697,10 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
     const columns = Math.min(Math.max(Number(container.column_count) || 1, 1), 6)
 
     return (
-      <ContainerBox $editMode={editMode} style={isHidden ? { opacity: 0.55, borderStyle: 'dashed', borderColor: '#90a4ae' } : undefined}>
+      <ContainerBox $editMode={editMode} style={isHidden ? { opacity: 0.55, borderStyle: 'dashed', borderColor: 'hsl(var(--fg-subtle))' } : undefined}>
         <ContainerTitle className="drag-handle" $editMode={editMode}>
           {container.name}
-          {isHidden && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#78909c', fontWeight: 500 }}>(숨김)</span>}
+          {isHidden && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'hsl(var(--fg-subtle))', fontWeight: 500 }}>(숨김)</span>}
         </ContainerTitle>
         {imgs.length > 0 && (
           <ImageArea>

@@ -26,24 +26,24 @@ const Toolbar = styled.div`
 const SearchInput = styled.input`
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const AddBtn = styled.button`
   padding: 9px 18px;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  &:hover { background: #2980b9; }
+  &:hover { background: hsl(var(--primary)); }
 `
 
 /**
@@ -65,9 +65,9 @@ const TableGridWrap = styled.div`
 `
 
 const Card = styled.div`
-  background: #f8f9fa;
-  border: 1px solid ${p => (p.$open ? '#3498db' : '#e9ecef')};
-  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  border: 1px solid ${p => (p.$open ? 'hsl(var(--primary))' : 'hsl(var(--surface-2))')};
+  border-radius: var(--radius);
   overflow: hidden;
 
   /* 펼친 표는 **줄 전체**를 쓴다. 한 칸 너비에 가두면 열이 몇 개만 돼도
@@ -81,19 +81,19 @@ const CardHead = styled.div`
   gap: 10px;
   padding: 13px 16px;
   cursor: pointer;
-  &:hover { background: #f1f3f5; }
+  &:hover { background: hsl(var(--surface-2)); }
 `
 
 const Name = styled.div`
   font-weight: 600;
   font-size: 0.92rem;
-  color: #333;
+  color: hsl(var(--fg));
   flex-shrink: 0;
 `
 
 const Shape = styled.span`
   font-size: 0.78rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -105,27 +105,27 @@ const UsageBadge = styled.span`
   font-size: 0.72rem;
   font-weight: 700;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   flex-shrink: 0;
-  background: ${p => (p.$count > 0 ? '#e3f2fd' : '#f0f0f0')};
-  color: ${p => (p.$count > 0 ? '#1565c0' : '#bbb')};
+  background: ${p => (p.$count > 0 ? 'hsl(var(--primary-soft))' : 'hsl(var(--bg))')};
+  color: ${p => (p.$count > 0 ? 'hsl(var(--primary))' : 'hsl(var(--border-strong))')};
 `
 
 const IconBtn = styled.button`
   background: none;
   border: none;
-  color: ${p => (p.$danger ? '#c0392b' : '#888')};
+  color: ${p => (p.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg-subtle))')};
   cursor: pointer;
   padding: 5px 9px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
   flex-shrink: 0;
-  &:hover { background: ${p => (p.$danger ? '#fee' : '#e9ecef')}; }
+  &:hover { background: ${p => (p.$danger ? 'hsl(var(--danger-soft))' : 'hsl(var(--surface-2))')}; }
 `
 
 const Body = styled.div`
   padding: 0 16px 16px 16px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid hsl(var(--surface-2));
 `
 
 const NameRow = styled.div`
@@ -138,54 +138,54 @@ const NameRow = styled.div`
 const NameInput = styled.input`
   flex: 1;
   padding: 8px 11px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   outline: none;
-  &:focus { border-color: #3498db; }
+  &:focus { border-color: hsl(var(--primary)); }
 `
 
 const SaveBtn = styled.button`
   padding: 8px 16px;
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  &:hover:not(:disabled) { background: #2980b9; }
-  &:disabled { background: #b0d4f1; cursor: not-allowed; }
+  &:hover:not(:disabled) { background: hsl(var(--primary)); }
+  &:disabled { background: hsl(var(--primary) / 0.45); cursor: not-allowed; }
 `
 
 const UsageList = styled.div`
   font-size: 0.8rem;
-  color: #666;
-  background: #eaf4fc;
-  border: 1px solid #b3d9f2;
-  border-radius: 6px;
+  color: hsl(var(--fg-muted));
+  background: hsl(var(--info-soft));
+  border: 1px solid hsl(var(--primary) / 0.45);
+  border-radius: var(--radius);
   padding: 9px 12px;
   margin-bottom: 12px;
   line-height: 1.6;
 `
 
 const Message = styled.div`
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   line-height: 1.5;
   margin-bottom: 12px;
   white-space: pre-line;
-  background: ${p => (p.$error ? '#fdecea' : '#eef7ee')};
-  border: 1px solid ${p => (p.$error ? '#f5c6cb' : '#cbe5cb')};
-  color: ${p => (p.$error ? '#a4343a' : '#2f6b34')};
+  background: ${p => (p.$error ? 'hsl(var(--danger-soft))' : 'hsl(var(--ok-soft))')};
+  border: 1px solid ${p => (p.$error ? 'hsl(var(--danger-border))' : 'hsl(var(--ok-border))')};
+  color: ${p => (p.$error ? 'hsl(var(--danger))' : 'hsl(var(--ok))')};
 `
 
 const Empty = styled.div`
   text-align: center;
   padding: 48px 24px;
-  color: #bbb;
+  color: hsl(var(--border-strong));
   font-size: 0.95rem;
   line-height: 1.7;
 `

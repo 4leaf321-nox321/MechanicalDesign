@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react'
 import styled from 'styled-components'
 import Plotly from 'plotly.js-dist-min'
+import { useChartColors } from '../../theme/chartColors'
 
 const Wrapper = styled.div`
   display: flex;
@@ -11,7 +12,7 @@ const Wrapper = styled.div`
 
 const Hint = styled.div`
   font-size: 0.75rem;
-  color: #999;
+  color: hsl(var(--fg-subtle));
 `
 
 const PlotHost = styled.div`
@@ -37,6 +38,7 @@ function pearson(xs, ys) {
 }
 
 function CorrelationHeatmap({ rows, keys, labels }) {
+  const chart = useChartColors()
   const plotRef = useRef(null)
 
   const numericKeys = useMemo(() => (
@@ -71,11 +73,8 @@ function CorrelationHeatmap({ rows, keys, labels }) {
       x: tickLabels,
       y: tickLabels,
       colorscale: [
-        [0, '#d32f2f'],     // 강한 음의 상관 (빨강)
-        [0.25, '#ef9a9a'],
-        [0.5, '#ffffff'],   // 0 (흰색)
-        [0.75, '#90caf9'],
-        [1, '#1976d2'],     // 강한 양의 상관 (파랑)
+        // 음↔양 눈금. 가운데가 0 이라 양쪽이 대칭이어야 한다.
+        ...chart.diverging.map(([at, c]) => [at, c]),
       ],
       zmin: -1,
       zmax: 1,
@@ -94,7 +93,7 @@ function CorrelationHeatmap({ rows, keys, labels }) {
           showarrow: false,
           font: {
             size: 11,
-            color: Math.abs(matrix[i][j]) > 0.6 ? 'white' : '#333',
+            color: Math.abs(matrix[i][j]) > 0.6 ? chart.paper : chart.fg,
           },
         })
       }
@@ -102,8 +101,8 @@ function CorrelationHeatmap({ rows, keys, labels }) {
 
     const layout = {
       margin: { l: 120, r: 40, t: 20, b: 120 },
-      paper_bgcolor: '#ffffff',
-      plot_bgcolor: '#ffffff',
+      paper_bgcolor: chart.paper,
+      plot_bgcolor: chart.paper,
       xaxis: { side: 'bottom', tickangle: -35 },
       yaxis: { autorange: 'reversed' },
       annotations,
