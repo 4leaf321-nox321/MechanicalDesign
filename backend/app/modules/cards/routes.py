@@ -408,6 +408,36 @@ def get_cards():
     return jsonify([c.to_dict() for c in cards])
 
 
+@cards_bp.route('/variables', methods=['GET'])
+def get_variables_bulk():
+    """여러 카드의 변수를 한 번에. `?ids=3,7,11`
+
+    워크플로 편집기가 노드마다 따로 부르면 노드 수만큼 요청이 나가고, 그중
+    하나가 늦게 오면 화면이 반쯤 그려진 상태로 남는다.
+
+    볼 수 없는 카드는 **조용히 빠진다**. 오류로 만들면 남의 초안이 섞인 순간
+    화면 전체가 안 뜨고, 있다는 사실도 알려 주게 된다.
+    """
+    raw = (request.args.get('ids') or '').strip()
+    ids = []
+    for part in raw.split(','):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    if not ids:
+        return jsonify({})
+
+    actor = current_user()
+    out = {}
+    for card in Card.query.filter(Card.id.in_(ids[:100])).all():
+        if not card.is_visible_to(actor):
+            continue
+        rows = (Variable.query.filter_by(card_id=card.id)
+                .order_by(Variable.sort_order).all())
+        out[str(card.id)] = [v.to_dict() for v in rows]
+    return jsonify(out)
+
+
 @cards_bp.route('/lookup', methods=['GET'])
 def lookup_card():
     """주소로 카드 하나를 찾는다. `?route=/볼트-강도`

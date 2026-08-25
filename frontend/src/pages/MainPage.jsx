@@ -1106,11 +1106,7 @@ function MainPage() {
                만들어지는 곳은 내 공간이다. 만드는 자리를 특정 화면에만 두면
                그 화면을 안 눌러 본 사람은 기능이 있는 줄도 모른다. */
             canAdd={!isTrashView}
-            /* 편집기는 아직 없다(4단계). 주소로 보내면 빈 화면이 뜨는데,
-               그건 고장으로 읽힌다 — 없는 것은 없다고 말하는 편이 낫다. */
-            onOpen={(wf) => setNotice(
-              `'${wf.name}' — 워크플로 편집기는 아직 준비 중입니다. `
-              + '지금은 만들기·이름·삭제까지만 됩니다.')}
+            onOpen={(wf) => navigate(wf.route)}
             onAdd={() => setWfForm({ mode: 'create' })}
             onDelete={handleDeleteWorkflow}
             onRestore={handleRestoreWorkflow}

@@ -89,6 +89,23 @@ def list_trash():
     return jsonify([w.to_dict() for w in rows])
 
 
+@workflows_bp.route('/lookup', methods=['GET'])
+def lookup_workflow():
+    """주소로 워크플로 하나. 카드의 `/cards/lookup` 과 같은 이유로 있다 —
+    목록에 보일 것과 열 수 있는 것은 다른 질문이다."""
+    route = (request.args.get('route') or '').strip()
+    if not route:
+        raise AppError('MD-WF-0140', 'route 를 지정해 주세요.')
+
+    wf = Workflow.query.filter_by(route=route).first()
+    if wf is None or not wf.is_visible_to(current_user()):
+        raise AppError('MD-WF-0101', '워크플로를 찾을 수 없습니다.', status=404)
+
+    body = wf.to_dict(full=True)
+    body['order'] = services.topological_order(wf)
+    return jsonify(body)
+
+
 @workflows_bp.route('/<int:workflow_id>', methods=['GET'])
 def get_workflow(workflow_id):
     """노드와 연결까지 한 번에.

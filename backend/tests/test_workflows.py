@@ -535,3 +535,63 @@ def test_an_org_with_a_posted_workflow_is_not_deleted_silently(app, client, chai
     # 내리고 나면 지울 수 있다.
     client.delete(f"/api/workflows/{wf['id']}/mounts/{team}", headers=head)
     assert client.delete(f'/api/orgs/{team}', headers=admin).status_code == 200
+
+
+# --- 편집기가 쓰는 것들 ---------------------------------------------------------
+
+def test_lookup_opens_a_workflow_by_its_route(app, client, chain):
+    """편집기는 주소로 연다. 목록에 보일 것과 열 수 있는 것은 다른 질문이다."""
+    head, wf = chain['head'], chain['wf']
+    r = client.get('/api/workflows/lookup', query_string={'route': wf['route']},
+                   headers=head)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['name'] == '브래킷 검토'
+    # 편집기가 한 번에 다 그릴 수 있어야 한다.
+    assert 'nodes' in body and 'links' in body and 'order' in body
+
+
+def test_lookup_hides_someone_elses_draft(app, client, chain):
+    _user(app, 'lee@x.com')
+    r = client.get('/api/workflows/lookup',
+                   query_string={'route': chain['wf']['route']},
+                   headers=_login(client, 'lee@x.com'))
+    assert r.status_code == 404
+
+
+def test_bulk_variables_serve_the_editor(app, client, chain):
+    """노드마다 따로 부르면 그중 하나가 늦어 화면이 반쯤 그려진다."""
+    head = chain['head']
+    r = client.get('/api/cards/variables',
+                   query_string={'ids': f"{chain['load_id']},{chain['stress_id']}"},
+                   headers=head)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert sorted(body.keys()) == sorted([str(chain['load_id']), str(chain['stress_id'])])
+    assert len(body[str(chain['stress_id'])]) == 3
+    # 편집기가 단위 검사를 하려면 unit_info 가 실려 와야 한다.
+    assert 'unit_info' in body[str(chain['load_id'])][0]
+
+
+def test_bulk_variables_skip_cards_you_cannot_see(app, client, chain):
+    """오류로 만들면 남의 초안이 섞인 순간 화면 전체가 안 뜨고, 있다는 사실도 샌다."""
+    uid = chain['uid']
+    other = _user(app, 'lee@x.com')
+    hidden, _ = _card(app, uid, '남의 초안 카드', [('x', 'x', 'input', None)])
+    with app.app_context():
+        db.session.get(Card, hidden).status = 'draft'
+        db.session.commit()
+
+    r = client.get('/api/cards/variables',
+                   query_string={'ids': f"{hidden},{chain['stress_id']}"},
+                   headers=_login(client, 'lee@x.com'))
+    assert r.status_code == 200
+    assert str(hidden) not in r.get_json()
+    assert other  # 사용자는 만들어졌다
+
+
+def test_bulk_variables_ignore_junk_ids(app, client, chain):
+    r = client.get('/api/cards/variables', query_string={'ids': 'abc,,7x'},
+                   headers=chain['head'])
+    assert r.status_code == 200
+    assert r.get_json() == {}
