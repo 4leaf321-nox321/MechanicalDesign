@@ -343,3 +343,86 @@ export const Notice = styled.div`
   font-size: 0.85rem;
   cursor: pointer;
 `
+
+export const SubTitle = styled.div`
+  margin: 16px 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6b7280;
+`
+
+export const Finals = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+`
+
+export const Final = styled.div`
+  border: 1px solid ${p => (p.$bad ? '#f0e2b6' : '#cfe3f7')};
+  background: ${p => (p.$bad ? '#fffdf3' : '#f8fbff')};
+  border-radius: 8px;
+  padding: 14px 16px;
+`
+
+export const FinalName = styled.div`
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-bottom: 8px;
+`
+
+export const FinalRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: #4b5563;
+  padding: 3px 0;
+
+  b {
+    font-size: 1.05rem;
+    color: #1a1a2e;
+    font-variant-numeric: tabular-nums;
+  }
+`
+
+/** 노드별 한 줄. 상태를 왼쪽 색띠로 — 글자로만 쓰면 훑을 때 안 보인다. */
+export const RunRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 12px;
+  border-left: 3px solid ${p => (p.$status === 'ok' ? '#5b9bd5'
+    : p.$status === 'failed' ? '#e08b6a' : '#cbd2dc')};
+  background: #fbfcfd;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 5px;
+  font-size: 0.83rem;
+`
+
+export const RunName = styled.span`
+  font-weight: 600;
+  color: #1a1a2e;
+  min-width: 120px;
+`
+
+export const RunVals = styled.span`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #4b5563;
+  font-variant-numeric: tabular-nums;
+`
+
+export const RunWhy = styled.span`
+  color: #8a6d1a;
+`
+
+export const SaveBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #eef0f4;
+`

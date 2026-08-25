@@ -34,6 +34,29 @@ def _snapshot(card_id):
     return [v.to_dict() for v in variables]
 
 
+def _workflow_snapshot(workflow):
+    """워크플로의 배선 + 노드가 쓰는 카드의 변수 정의 전부.
+
+    카드가 살아 있는 참조라, 이것을 안 담으면 나중에 기록을 열었을 때 **그때
+    무엇을 계산한 것인지** 알 수 없다. 카드 기록이 정의 스냅샷을 뜨는 것과 같은
+    이유이고, 여기서는 카드가 여럿일 뿐이다.
+    """
+    cards = {}
+    for node in workflow.nodes:
+        key = str(node.card_id)
+        if key in cards:
+            continue
+        rows = (Variable.query.filter_by(card_id=node.card_id)
+                .order_by(Variable.sort_order).all())
+        cards[key] = [v.to_dict() for v in rows]
+
+    return {
+        'nodes': [n.to_dict() for n in workflow.nodes],
+        'links': [l.to_dict() for l in workflow.links],
+        'cards': cards,
+    }
+
+
 @records_bp.route('', methods=['POST'])
 def create_record():
     """계산 결과를 남긴다.
@@ -48,16 +71,28 @@ def create_record():
     스냅샷을 서버가 뜨므로 나중에 다시 돌려 확인할 수 있다.
     """
     data = request.get_json(silent=True) or {}
-
-    card_id = data.get('card_id')
-    card = Card.query.get(card_id) if card_id is not None else None
-    if card is None:
-        return jsonify({'error': '카드를 찾을 수 없습니다.'}), 404
-
     actor = current_user()
-    if not card.is_visible_to(actor):
-        # 있다는 사실 자체를 알려 주지 않는다 — 카드 쪽 규칙과 같다.
-        return jsonify({'error': '카드를 찾을 수 없습니다.'}), 404
+
+    # 카드 하나의 계산이거나, 워크플로 전체의 계산이거나. 둘 다 아니면 무엇을
+    # 기록하는지 알 수 없다.
+    workflow_id = data.get('workflow_id')
+    card_id = data.get('card_id')
+
+    card = None
+    workflow = None
+    if workflow_id is not None:
+        from app.modules.workflows.models import Workflow
+
+        workflow = db.session.get(Workflow, workflow_id)
+        if workflow is None or not workflow.is_visible_to(actor):
+            return jsonify({'error': '워크플로를 찾을 수 없습니다.'}), 404
+    else:
+        card = Card.query.get(card_id) if card_id is not None else None
+        if card is None:
+            return jsonify({'error': '카드를 찾을 수 없습니다.'}), 404
+        if not card.is_visible_to(actor):
+            # 있다는 사실 자체를 알려 주지 않는다 — 카드 쪽 규칙과 같다.
+            return jsonify({'error': '카드를 찾을 수 없습니다.'}), 404
 
     title = (data.get('title') or '').strip()
     if not title:
@@ -71,13 +106,24 @@ def create_record():
     if not isinstance(inputs, dict) or not isinstance(results, dict):
         return jsonify({'error': 'inputs 와 results 는 객체여야 합니다.'}), 400
 
-    snapshot = _snapshot(card.id)
-    if not snapshot:
-        return jsonify({'error': '변수가 없는 카드는 기록할 것이 없습니다.'}), 400
+    if workflow is not None:
+        # 워크플로 스냅샷은 **배선과 그때의 카드 정의를 통째로** 뜬다. 노드가
+        # 가리키는 카드는 나중에 바뀌므로(살아 있는 참조), 그것까지 담지 않으면
+        # 기록을 열었을 때 그때 무엇을 계산한 것인지 알 수 없다.
+        snapshot = _workflow_snapshot(workflow)
+        if not snapshot.get('nodes'):
+            return jsonify({'error': '노드가 없는 워크플로는 기록할 것이 없습니다.'}), 400
+    else:
+        snapshot = _snapshot(card.id)
+        if not snapshot:
+            return jsonify({'error': '변수가 없는 카드는 기록할 것이 없습니다.'}), 400
 
     row = CalculationRecord(
-        card_id=card.id,
-        card_name=card.name,
+        kind='workflow' if workflow is not None else 'card',
+        card_id=card.id if card is not None else None,
+        card_name=card.name if card is not None else None,
+        workflow_id=workflow.id if workflow is not None else None,
+        workflow_name=workflow.name if workflow is not None else None,
         title=title,
         note=(data.get('note') or '').strip() or None,
         inputs=json.dumps(inputs, ensure_ascii=False),
@@ -106,6 +152,10 @@ def list_records():
     if card_id is not None:
         query = query.filter(CalculationRecord.card_id == card_id)
 
+    workflow_id = request.args.get('workflow_id', type=int)
+    if workflow_id is not None:
+        query = query.filter(CalculationRecord.workflow_id == workflow_id)
+
     if request.args.get('mine') in ('1', 'true'):
         query = query.filter(CalculationRecord.created_by_id == actor.id)
 
@@ -113,7 +163,8 @@ def list_records():
     if keyword:
         like = f'%{keyword}%'
         query = query.filter(db.or_(CalculationRecord.title.ilike(like),
-                                    CalculationRecord.card_name.ilike(like)))
+                                    CalculationRecord.card_name.ilike(like),
+                                    CalculationRecord.workflow_name.ilike(like)))
 
     rows = (query.order_by(CalculationRecord.created_at.desc(),
                            CalculationRecord.id.desc())

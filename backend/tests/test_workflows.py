@@ -595,3 +595,102 @@ def test_bulk_variables_ignore_junk_ids(app, client, chain):
                    headers=chain['head'])
     assert r.status_code == 200
     assert r.get_json() == {}
+
+
+# --- 워크플로 기록 -------------------------------------------------------------
+
+def _wired(client, head, chain):
+    """하중 → 응력 이 이어진 워크플로."""
+    wf = chain['wf']
+    n1 = _node(client, head, wf['id'], chain['load_id'])
+    n2 = _node(client, head, wf['id'], chain['stress_id'])
+    _link(client, head, wf['id'], n1, chain['load_vars']['F'],
+          n2, chain['stress_vars']['Fin'])
+    return wf, n1, n2
+
+
+def test_a_workflow_run_can_be_recorded(app, client, chain):
+    """돌릴 수는 있는데 남길 수 없으면 반쪽이다."""
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+
+    r = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '표준 조건',
+        'inputs': {str(n1['id']): {}, str(n2['id']): {}},
+        'results': {str(n1['id']): {}, str(n2['id']): {}},
+    })
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body['kind'] == 'workflow'
+    # 화면이 카드 기록과 한 목록에 늘어놓으므로 이름이 하나로 정해져야 한다.
+    assert body['source_name'] == '브래킷 검토'
+
+
+def test_the_record_snapshots_the_wiring_and_the_card_definitions(app, client, chain):
+    """카드는 살아 있는 참조다. 정의를 안 담으면 나중에 무엇을 계산한 것인지 모른다."""
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+    made = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '표준 조건',
+        'inputs': {}, 'results': {},
+    }).get_json()
+
+    detail = client.get(f"/api/records/{made['id']}", headers=head).get_json()
+    snap = detail['definition_snapshot']
+    assert len(snap['nodes']) == 2
+    assert len(snap['links']) == 1
+    # 노드가 쓰는 카드의 변수까지 통째로.
+    assert sorted(int(k) for k in snap['cards']) == sorted(
+        [chain['load_id'], chain['stress_id']])
+    assert len(snap['cards'][str(chain['stress_id'])]) == 3
+
+
+def test_an_empty_workflow_has_nothing_to_record(app, client, chain):
+    r = client.post('/api/records', headers=chain['head'], json={
+        'workflow_id': chain['wf']['id'], 'title': '빈 것',
+        'inputs': {}, 'results': {},
+    })
+    assert r.status_code == 400
+
+
+def test_workflow_records_are_filtered_and_searched(app, client, chain):
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+    client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '표준 조건', 'inputs': {}, 'results': {}})
+
+    rows = client.get('/api/records', query_string={'workflow_id': wf['id']},
+                      headers=head).get_json()
+    assert [r['title'] for r in rows] == ['표준 조건']
+    # 워크플로 이름으로도 찾힌다 — 카드 이름으로 찾는 것과 같은 자리다.
+    rows = client.get('/api/records', query_string={'q': '브래킷'},
+                      headers=head).get_json()
+    assert [r['title'] for r in rows] == ['표준 조건']
+
+
+def test_someone_elses_draft_workflow_record_is_hidden(app, client, chain):
+    """초안 워크플로로 돌린 기록이 남에게 보이면 초안을 감춘 의미가 없다."""
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+    client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '표준 조건', 'inputs': {}, 'results': {}})
+
+    _user(app, 'lee@x.com')
+    assert client.get('/api/records',
+                      headers=_login(client, 'lee@x.com')).get_json() == []
+
+
+def test_a_record_survives_its_workflow(app, client, chain):
+    """기록이 남는 것이 이 표의 존재 이유다."""
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+    made = client.post('/api/records', headers=head, json={
+        'workflow_id': wf['id'], 'title': '표준 조건', 'inputs': {}, 'results': {}}).get_json()
+
+    client.delete(f"/api/workflows/{wf['id']}", headers=head)
+    client.delete(f"/api/workflows/{wf['id']}/permanent", headers=head)
+
+    detail = client.get(f"/api/records/{made['id']}", headers=head).get_json()
+    assert detail['workflow_name'] == '브래킷 검토'
+    assert detail['source_exists'] is False
+    assert len(detail['definition_snapshot']['nodes']) == 2

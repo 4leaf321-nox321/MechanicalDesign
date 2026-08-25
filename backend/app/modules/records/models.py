@@ -34,9 +34,25 @@ class CalculationRecord(db.Model):
                         nullable=True, index=True)
     card = db.relationship('Card', foreign_keys=[card_id])
 
-    card_name = db.Column(db.String(100), nullable=False)
+    card_name = db.Column(db.String(100), nullable=True)
     """카드 이름을 베껴 둔다. 카드가 지워지면 이것만 남는다 — 그때 '카드 없음'
-    이라고만 보이면 그 기록은 아무 쓸모가 없다."""
+    이라고만 보이면 그 기록은 아무 쓸모가 없다. 워크플로 기록에는 없다."""
+
+    #: 'card' | 'workflow'.
+    #:
+    #: 표를 나누지 않는다. 두 종류가 한 표에 있어야 "내가 한 계산" 을 한 목록에서
+    #: 볼 수 있다 — 나누면 목록 화면이 매번 둘을 합쳐야 하고 정렬·검색도 두 벌이
+    #: 된다.
+    kind = db.Column(db.String(20), nullable=False, default='card',
+                     server_default='card')
+
+    workflow_id = db.Column(db.Integer,
+                            db.ForeignKey('workflows.id', ondelete='SET NULL'),
+                            nullable=True, index=True)
+    workflow = db.relationship('Workflow', foreign_keys=[workflow_id])
+
+    workflow_name = db.Column(db.String(100), nullable=True)
+    """워크플로 이름 사본. 카드 이름과 같은 이유로 베껴 둔다."""
 
     title = db.Column(db.String(200), nullable=False)
     """무슨 계산인지 사람이 붙이는 이름표. 예: 'Model X 브래킷 볼트'.
@@ -76,7 +92,14 @@ class CalculationRecord(db.Model):
         body = {
             'id': self.id,
             'card_id': self.card_id,
+            'kind': self.kind or 'card',
             'card_name': self.card_name,
+            'workflow_id': self.workflow_id,
+            'workflow_name': self.workflow_name,
+            # 무엇을 계산한 기록인지. 화면이 카드와 워크플로를 한 목록에 늘어놓
+            # 으므로, 제목 옆에 붙일 이름이 하나로 정해져 있어야 한다.
+            'source_name': (self.workflow_name if (self.kind or 'card') == 'workflow'
+                            else self.card_name),
             'title': self.title,
             'note': self.note,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -85,6 +108,9 @@ class CalculationRecord(db.Model):
             # 카드가 지워졌는지 화면이 알아야 한다 — '이 카드로 다시 계산하기'
             # 를 띄울 수 있는지가 여기서 갈린다.
             'card_exists': self.card_id is not None,
+            'source_exists': (self.workflow_id is not None
+                              if (self.kind or 'card') == 'workflow'
+                              else self.card_id is not None),
         }
         if full:
             body['inputs'] = self._load(self.inputs, {})
@@ -105,6 +131,9 @@ class CalculationRecord(db.Model):
             return False
         if user.is_admin or self.created_by_id == user.id:
             return True
-        if self.card is None:
+        # 워크플로 기록도 같다 — 초안 워크플로로 돌린 기록이 남에게 보이면
+        # 초안을 감춘 의미가 없다. 스냅샷에 정의가 통째로 들어 있다.
+        source = self.workflow if (self.kind or 'card') == 'workflow' else self.card
+        if source is None:
             return False
-        return self.card.is_visible_to(user)
+        return source.is_visible_to(user)

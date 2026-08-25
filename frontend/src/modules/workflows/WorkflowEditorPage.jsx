@@ -14,6 +14,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../../shared/api/client'
 import { validateWorkflow } from '../../shared/utils/workflowValidate'
+import { STATUS, runWorkflow, terminalNodes } from '../../shared/utils/workflowEngine'
+import { fmt } from '../../shared/utils/goalSeek'
 import * as S from './editorStyles'
 
 function WorkflowEditorPage() {
@@ -27,6 +29,9 @@ function WorkflowEditorPage() {
   const [notice, setNotice] = useState('')
   const [picking, setPicking] = useState(false)
   const [linking, setLinking] = useState(null)   // { fromNode, fromVar, toNode, toVar }
+  const [run, setRun] = useState(null)
+  const [recordTitle, setRecordTitle] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     const route = decodeURIComponent(location.pathname)
@@ -75,6 +80,9 @@ function WorkflowEditorPage() {
 
   const call = async (path, options) => {
     setError('')
+    // 배선이나 값이 바뀌면 지난 실행 결과는 더 이상 이 워크플로의 결과가
+    // 아니다. 남겨 두면 바뀐 화면 아래에 옛 숫자가 붙어 있게 된다.
+    setRun(null)
     const res = await apiFetch(path, options)
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -134,6 +142,52 @@ function WorkflowEditorPage() {
 
   const removeLink = async (link) => {
     await call(`/workflows/${workflow.id}/links/${link.id}`, { method: 'DELETE' })
+  }
+
+  /**
+   * 돌린다. 계산은 브라우저에서 한다 — 카드 화면과 **같은 계산기**를 쓰는
+   * 것이 중요하다. 서버가 따로 돌리면 두 곳의 답이 갈리는 날이 온다.
+   */
+  const execute = () => {
+    setError('')
+    setRun(runWorkflow(workflow, cardVariables))
+  }
+
+  /**
+   * 이 실행을 기록으로 남긴다.
+   *
+   * **화면이 보여 준 숫자를 그대로 보낸다.** 서버가 다시 계산해 넣으면 둘이
+   * 어긋나는 날 어느 쪽을 믿어야 할지 알 수 없다 — 카드 기록과 같은 판단이다.
+   */
+  const saveRecord = async () => {
+    if (!run?.nodes) return
+    setSaving(true)
+    setError('')
+
+    const inputs = {}
+    const results = {}
+    for (const node of workflow.nodes) {
+      const r = run.nodes[node.id]
+      if (!r) continue
+      inputs[node.id] = r.values || {}
+      results[node.id] = r.results || {}
+    }
+
+    const res = await apiFetch('/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_id: workflow.id, title: recordTitle, inputs, results,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(body.error || '기록을 저장하지 못했습니다.')
+      return
+    }
+    setRecordTitle('')
+    setNotice('기록으로 남겼습니다. 「계산 기록」에서 다시 볼 수 있습니다.')
   }
 
   const publish = async () => {
@@ -201,6 +255,102 @@ function WorkflowEditorPage() {
           </S.Issue>
         ))}
       </S.Panel>
+
+      {/* --- 실행 -------------------------------------------------------- */}
+      {workflow.nodes.length > 0 && (
+        <S.Panel style={{ marginTop: 14 }}>
+          <S.PanelHead>
+            실행
+            <S.Primary style={{ marginLeft: 'auto' }}
+                       onClick={execute}
+                       disabled={errors.length > 0}>
+              돌리기
+            </S.Primary>
+          </S.PanelHead>
+
+          {errors.length > 0 && (
+            <S.Muted>검증 오류를 먼저 고쳐야 돌릴 수 있습니다.</S.Muted>
+          )}
+
+          {run && !run.nodes && <S.Issue $bad>{run.message}</S.Issue>}
+
+          {run?.nodes && (
+            <>
+              {/* 결론을 먼저, 크게. 중간 노드까지 같은 크기로 늘어놓으면
+                  무엇이 답인지 알 수 없다. */}
+              <S.SubTitle>결론</S.SubTitle>
+              <S.Finals>
+                {terminalNodes(workflow).map(node => {
+                  const r = run.nodes[node.id]
+                  const vars = (cardVariables[node.card_id] || [])
+                    .filter(v => v.category === 'output')
+                  return (
+                    <S.Final key={node.id} $bad={r?.status !== STATUS.ok}>
+                      <S.FinalName>{node.alias}</S.FinalName>
+                      {r?.status === STATUS.blocked ? (
+                        <S.Muted>{r.message}</S.Muted>
+                      ) : vars.length === 0 ? (
+                        <S.Muted>결과값이 없는 카드입니다.</S.Muted>
+                      ) : vars.map(v => {
+                        const cell = r?.results?.[v.id]
+                        return (
+                          <S.FinalRow key={v.id}>
+                            <span>{v.name}{v.symbol ? ` (${v.symbol})` : ''}</span>
+                            <b>
+                              {cell?.error ? '—' : fmt(cell?.value)}
+                              {!cell?.error && v.unit ? ` ${v.unit}` : ''}
+                            </b>
+                          </S.FinalRow>
+                        )
+                      })}
+                    </S.Final>
+                  )
+                })}
+              </S.Finals>
+
+              <S.SubTitle>노드별</S.SubTitle>
+              {workflow.order?.map(nodeId => {
+                const node = nodeById.get(String(nodeId))
+                const r = run.nodes[nodeId]
+                if (!node || !r) return null
+                const vars = cardVariables[node.card_id] || []
+                return (
+                  <S.RunRow key={nodeId} $status={r.status}>
+                    <S.RunName>{node.alias}</S.RunName>
+                    {r.status === STATUS.blocked ? (
+                      <S.RunWhy>{r.message}</S.RunWhy>
+                    ) : (
+                      <S.RunVals>
+                        {vars.filter(v => v.category !== 'input').map(v => {
+                          const cell = r.results?.[v.id]
+                          return (
+                            <span key={v.id}>
+                              {v.symbol || v.name}={cell?.error ? 'ERR' : fmt(cell?.value)}
+                            </span>
+                          )
+                        })}
+                      </S.RunVals>
+                    )}
+                  </S.RunRow>
+                )
+              })}
+
+              {/* 기록은 **돌린 뒤에만** 남긴다. 화면에 없는 숫자가 기록으로
+                  들어가는 것이 이 기능에서 가장 나쁜 실패다. */}
+              <S.SaveBar>
+                <S.Value style={{ width: 280 }}
+                         value={recordTitle}
+                         onChange={(e) => setRecordTitle(e.target.value)}
+                         placeholder="무슨 계산인가요? 예: Model X 브래킷" />
+                <S.Primary onClick={saveRecord}
+                           disabled={saving || !recordTitle.trim()}>
+                  {saving ? '저장 중…' : '기록 저장'}
+                </S.Primary>
+              </S.SaveBar>
+            </>
+          )}
+        </S.Panel>
+      )}
 
       {/* --- 노드 -------------------------------------------------------- */}
       <S.SectionTitle>노드</S.SectionTitle>
