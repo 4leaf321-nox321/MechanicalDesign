@@ -7,7 +7,7 @@ export const Page = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2f5;
+  background: hsl(var(--bg));
   padding: 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `
@@ -15,8 +15,8 @@ export const Page = styled.div`
 export const Panel = styled.form`
   width: 100%;
   max-width: 400px;
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   padding: 40px 36px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 `
@@ -24,13 +24,13 @@ export const Panel = styled.form`
 export const Title = styled.h1`
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   margin: 0 0 6px 0;
 `
 
 export const Subtitle = styled.p`
   font-size: 0.9rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   margin: 0 0 28px 0;
   line-height: 1.5;
 `
@@ -44,7 +44,7 @@ export const FieldLabel = styled.span`
   display: block;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin-bottom: 6px;
 `
 
@@ -52,47 +52,47 @@ export const Input = styled.input`
   width: 100%;
   box-sizing: border-box;
   padding: 11px 13px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.95rem;
   transition: border-color 0.15s ease;
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 
   &:disabled {
-    background: #f5f5f5;
-    color: #999;
+    background: hsl(var(--bg));
+    color: hsl(var(--fg-subtle));
   }
 `
 
 export const Hint = styled.span`
   display: block;
   font-size: 0.78rem;
-  color: #aaa;
+  color: hsl(var(--fg-subtle));
   margin-top: 5px;
 `
 
 export const Submit = styled.button`
   width: 100%;
   padding: 12px;
-  background: #1a1a2e;
-  color: white;
+  background: hsl(var(--fg));
+  color: hsl(var(--solid-fg));
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
 
   &:hover:not(:disabled) {
-    background: #2a2a4e;
+    background: hsl(var(--header-bg) / 0.85);
   }
 
   &:disabled {
-    background: #aaa;
+    background: hsl(var(--fg-subtle));
     cursor: not-allowed;
   }
 `
@@ -102,10 +102,10 @@ export const Submit = styled.button`
  * 순간 무엇이 틀렸는지 다시 볼 수 없다.
  */
 export const ErrorBox = styled.div`
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  color: #a4343a;
-  border-radius: 6px;
+  background: hsl(var(--danger-soft));
+  border: 1px solid hsl(var(--danger-border));
+  color: hsl(var(--danger));
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   line-height: 1.45;
@@ -114,10 +114,10 @@ export const ErrorBox = styled.div`
 `
 
 export const NoticeBox = styled.div`
-  background: #eef7ee;
-  border: 1px solid #cbe5cb;
-  color: #2f6b34;
-  border-radius: 6px;
+  background: hsl(var(--ok-soft));
+  border: 1px solid hsl(var(--ok-border));
+  color: hsl(var(--ok));
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   line-height: 1.45;
@@ -128,11 +128,11 @@ export const NoticeBox = styled.div`
 export const FootNote = styled.p`
   margin: 22px 0 0 0;
   font-size: 0.85rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   text-align: center;
 
   a {
-    color: #3498db;
+    color: hsl(var(--primary));
     text-decoration: none;
     font-weight: 600;
   }

@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
+import AppHeader from '../../shared/components/AppHeader'
 
 import { api } from '../../shared/api/client'
 import { useAuth } from '../../shared/auth/AuthContext'
@@ -20,9 +21,9 @@ const STATUS_LABEL = {
 }
 
 const STATUS_COLOR = {
-  pending: '#b8860b',
-  active: '#2f6b34',
-  suspended: '#a4343a',
+  pending: 'hsl(var(--warn))',
+  active: 'hsl(var(--ok))',
+  suspended: 'hsl(var(--danger))',
 }
 
 const FILTERS = [
@@ -33,42 +34,20 @@ const FILTERS = [
 ]
 
 const Page = styled.div`
-  min-height: 100vh;
-  background: #f0f2f5;
+  /* 껍데기가 이미 화면 높이를 잡았다. 여기서 또 100vh 를 쓰면
+     사이드바 높이만큼 아래로 넘친다. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--bg));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `
 
-const Header = styled.header`
-  background: #1a1a2e;
-  color: white;
-  padding: 28px 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-`
-
-const HeaderTitle = styled.h1`
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 0;
-`
-
-const GhostBtn = styled.button`
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-`
-
 const Body = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 32px 48px;
   max-width: 1200px;
 `
@@ -82,52 +61,52 @@ const Bar = styled.div`
 `
 
 const Tab = styled.button`
-  background: ${(p) => (p.$on ? '#1a1a2e' : 'white')};
-  color: ${(p) => (p.$on ? 'white' : '#555')};
-  border: 1px solid ${(p) => (p.$on ? '#1a1a2e' : '#ddd')};
+  background: ${(p) => (p.$on ? 'hsl(var(--fg))' : 'white')};
+  color: ${(p) => (p.$on ? 'white' : 'hsl(var(--fg-muted))')};
+  border: 1px solid ${(p) => (p.$on ? 'hsl(var(--fg))' : 'hsl(var(--border))')};
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
   cursor: pointer;
 `
 
 const PrimaryBtn = styled.button`
   margin-left: auto;
-  background: #3498db;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--solid-fg));
   border: none;
   padding: 9px 18px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
 
   &:hover {
-    background: #2f89c5;
+    background: hsl(var(--primary) / 0.85);
   }
 `
 
 const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid hsl(var(--border));
   font-size: 0.88rem;
 
   th,
   td {
     padding: 13px 16px;
     text-align: left;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid hsl(var(--bg));
     vertical-align: middle;
   }
 
   th {
-    background: #fafafa;
+    background: hsl(var(--surface-2));
     font-weight: 600;
-    color: #666;
+    color: hsl(var(--fg-muted));
     font-size: 0.8rem;
   }
 
@@ -139,11 +118,11 @@ const Table = styled.table`
 const Badge = styled.span`
   display: inline-block;
   padding: 3px 9px;
-  border-radius: 11px;
+  border-radius: var(--radius);
   font-size: 0.75rem;
   font-weight: 600;
-  color: white;
-  background: ${(p) => p.$color || '#888'};
+  color: hsl(var(--solid-fg));
+  background: ${(p) => p.$color || 'hsl(var(--fg-subtle))'};
 `
 
 const RowActions = styled.div`
@@ -153,53 +132,53 @@ const RowActions = styled.div`
 `
 
 const SmallBtn = styled.button`
-  background: white;
-  border: 1px solid #ddd;
-  color: ${(p) => p.$danger ? '#a4343a' : '#444'};
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  color: ${(p) => p.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg-muted))'};
   padding: 5px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 0.78rem;
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    border-color: ${(p) => p.$danger ? '#a4343a' : '#3498db'};
+    border-color: ${(p) => p.$danger ? 'hsl(var(--danger))' : 'hsl(var(--primary))'};
   }
 
   &:disabled {
-    color: #bbb;
+    color: hsl(var(--border-strong));
     cursor: not-allowed;
   }
 `
 
 const Message = styled.div`
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 13px 16px;
   font-size: 0.87rem;
   line-height: 1.5;
   margin-bottom: 18px;
   white-space: pre-line;
-  background: ${(p) => (p.$error ? '#fdecea' : '#eef7ee')};
-  border: 1px solid ${(p) => (p.$error ? '#f5c6cb' : '#cbe5cb')};
-  color: ${(p) => (p.$error ? '#a4343a' : '#2f6b34')};
+  background: ${(p) => (p.$error ? 'hsl(var(--danger-soft))' : 'hsl(var(--ok-soft))')};
+  border: 1px solid ${(p) => (p.$error ? 'hsl(var(--danger-border))' : 'hsl(var(--ok-border))')};
+  color: ${(p) => (p.$error ? 'hsl(var(--danger))' : 'hsl(var(--ok))')};
 `
 
 const Secret = styled.code`
   display: inline-block;
-  background: #1a1a2e;
-  color: #7ee0a0;
+  background: hsl(var(--fg));
+  color: hsl(var(--ok));
   padding: 4px 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 0.95rem;
   letter-spacing: 0.4px;
   user-select: all;
 `
 
 const Empty = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 48px;
   text-align: center;
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-size: 0.9rem;
 `
 
@@ -214,8 +193,8 @@ const Backdrop = styled.div`
 `
 
 const Modal = styled.form`
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   padding: 28px;
   width: 100%;
   max-width: 380px;
@@ -225,14 +204,14 @@ const Modal = styled.form`
 const ModalTitle = styled.h2`
   margin: 0 0 18px 0;
   font-size: 1.15rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
 `
 
 const Label = styled.label`
   display: block;
   margin-bottom: 14px;
   font-size: 0.85rem;
-  color: #555;
+  color: hsl(var(--fg-muted));
   font-weight: 600;
 `
 
@@ -241,14 +220,14 @@ const TextInput = styled.input`
   box-sizing: border-box;
   margin-top: 5px;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 400;
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
@@ -257,7 +236,7 @@ const CheckRow = styled.label`
   align-items: center;
   gap: 8px;
   font-size: 0.87rem;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin-bottom: 18px;
   cursor: pointer;
 `
@@ -398,10 +377,7 @@ export function AccountsAdminPage() {
 
   return (
     <Page>
-      <Header>
-        <HeaderTitle>계정 관리</HeaderTitle>
-        <GhostBtn onClick={() => navigate('/')}>← 메인으로</GhostBtn>
-      </Header>
+      <AppHeader title="계정 관리" onHome={() => navigate('/')} />
 
       <Body>
         {message && <Message $error={message.error}>{renderMessage(message)}</Message>}
@@ -443,12 +419,12 @@ export function AccountsAdminPage() {
                     </td>
                     <td>{row.email}</td>
                     <td>
-                      <Badge $color={deleted ? '#777' : STATUS_COLOR[row.status]}>
+                      <Badge $color={deleted ? 'hsl(var(--fg-subtle))' : STATUS_COLOR[row.status]}>
                         {deleted ? '삭제됨' : STATUS_LABEL[row.status] || row.status}
                       </Badge>
                     </td>
                     <td>{row.is_admin ? '관리자' : '일반'}</td>
-                    <td style={{ color: '#999', fontSize: '0.82rem' }}>
+                    <td style={{ color: 'hsl(var(--fg-subtle))', fontSize: '0.82rem' }}>
                       {row.must_change_password && '비밀번호 변경 필요'}
                       {row.decision_note && `거절 사유: ${row.decision_note}`}
                     </td>

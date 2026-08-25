@@ -31,15 +31,15 @@ import styled from 'styled-components'
 const Panel = styled.nav`
   width: 260px;
   flex-shrink: 0;
-  background: white;
-  border-right: 1px solid #e3e6ec;
+  background: hsl(var(--surface));
+  border-right: 1px solid hsl(var(--border));
   padding: 18px 0 32px;
   overflow-y: auto;
 
   @media (max-width: 900px) {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid #e3e6ec;
+    border-bottom: 1px solid hsl(var(--border));
     max-height: 260px;
   }
 `
@@ -49,7 +49,7 @@ const SectionLabel = styled.div`
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   text-transform: uppercase;
   margin-top: 14px;
 
@@ -65,13 +65,13 @@ const Row = styled.div`
   padding: 7px 12px 7px ${(p) => 12 + p.$depth * 14}px;
   cursor: pointer;
   font-size: 0.87rem;
-  color: ${(p) => (p.$active ? '#1a1a2e' : '#4b5563')};
-  background: ${(p) => (p.$active ? '#eef2ff' : 'transparent')};
-  border-left: 3px solid ${(p) => (p.$active ? p.$color || '#3498db' : 'transparent')};
+  color: ${(p) => (p.$active ? 'hsl(var(--fg))' : 'hsl(var(--fg-muted))')};
+  background: ${(p) => (p.$active ? 'hsl(var(--accent-soft))' : 'transparent')};
+  border-left: 3px solid ${(p) => (p.$active ? p.$color || 'hsl(var(--primary))' : 'transparent')};
   font-weight: ${(p) => (p.$active ? 600 : 400)};
 
   &:hover {
-    background: ${(p) => (p.$active ? '#eef2ff' : '#f6f7f9')};
+    background: ${(p) => (p.$active ? 'hsl(var(--accent-soft))' : 'hsl(var(--surface-2))')};
   }
 
   &:hover .org-actions {
@@ -83,9 +83,9 @@ const Row = styled.div`
   ${(p) =>
     p.$dropInside &&
     `
-    outline: 2px solid #3498db;
+    outline: 2px solid hsl(var(--primary));
     outline-offset: -2px;
-    background: #eaf4fc;
+    background: hsl(var(--info-soft));
   `}
 
   ${(p) => p.$dragging && 'opacity: 0.4;'}
@@ -100,7 +100,7 @@ const Caret = styled.button`
   background: none;
   padding: 0;
   cursor: ${(p) => (p.$has ? 'pointer' : 'default')};
-  color: #9aa3af;
+  color: hsl(var(--fg-subtle));
   font-size: 0.7rem;
   line-height: 1;
   transform: rotate(${(p) => (p.$open ? 90 : 0)}deg);
@@ -122,8 +122,8 @@ const DropBand = styled.div`
     right: 10px;
     top: 2px;
     height: 2px;
-    border-radius: 2px;
-    background: ${(p) => (p.$over ? '#3498db' : 'transparent')};
+    border-radius: var(--radius-sm);
+    background: ${(p) => (p.$over ? 'hsl(var(--primary))' : 'transparent')};
   }
 `
 
@@ -154,17 +154,17 @@ function Counts({ cards = 0, workflows = 0 }) {
 
 const Dot = styled.span`
   margin: 0 3px;
-  color: #cbd2dc;
+  color: hsl(var(--border-strong));
 `
 
 /** 워크플로 쪽은 색을 달리한다 — 두 숫자가 같은 것을 센다고 오해하지 않게. */
 const WfCount = styled.span`
-  color: #6c5ce7;
+  color: hsl(var(--accent));
 `
 
 const Count = styled.span`
   font-size: 0.72rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   flex-shrink: 0;
 `
 
@@ -182,23 +182,23 @@ const IconBtn = styled.button`
   cursor: pointer;
   padding: 1px 4px;
   font-size: 0.75rem;
-  color: #8b93a1;
-  border-radius: 4px;
+  color: hsl(var(--fg-subtle));
+  border-radius: var(--radius-sm);
 
   &:hover {
-    background: #e5e7eb;
-    color: #1a1a2e;
+    background: hsl(var(--border));
+    color: hsl(var(--fg));
   }
 `
 
 const DragHint = styled.div`
   margin: 12px;
   padding: 9px 11px;
-  background: #eef6fd;
-  border: 1px solid #cfe4f7;
-  border-radius: 6px;
+  background: hsl(var(--info-soft));
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
   font-size: 0.74rem;
-  color: #35618a;
+  color: hsl(var(--info));
   line-height: 1.6;
 `
 
@@ -206,16 +206,16 @@ const AddRootBtn = styled.button`
   margin: 10px 12px 0;
   padding: 6px 10px;
   width: calc(100% - 24px);
-  border: 1px dashed #cbd2dc;
-  border-radius: 6px;
+  border: 1px dashed hsl(var(--border-strong));
+  border-radius: var(--radius);
   background: none;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   font-size: 0.8rem;
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
@@ -403,7 +403,7 @@ function OrgTree({
         <Row
           $depth={0}
           $active={selected === personal.slug}
-          $color="#94a3b8"
+          $color="hsl(var(--fg-subtle))"
           onClick={() => onSelect(personal.slug)}
           title="아직 어디에도 올리지 않은 카드가 여기 있습니다"
         >
@@ -416,7 +416,7 @@ function OrgTree({
       <SectionLabel>조직</SectionLabel>
       {/* 전체 보기가 없으면 "어느 조직에도 안 걸린 게시 카드" 를 볼 방법이
           사라진다. 조직을 만들기 전부터 있던 카드가 그렇다. */}
-      <Row $depth={0} $active={!selected} $color="#3498db" onClick={() => onSelect('')}>
+      <Row $depth={0} $active={!selected} $color="hsl(var(--primary))" onClick={() => onSelect('')}>
         <Caret $has={false} />
         <Label>전체</Label>
       </Row>
@@ -443,7 +443,7 @@ function OrgTree({
           <Row
             $depth={0}
             $active={selected === trashSlug}
-            $color="#b0b6c0"
+            $color="hsl(var(--fg-subtle))"
             onClick={() => onSelect(trashSlug)}
             title="지운 카드는 여기 있습니다. 되살리거나 완전히 지울 수 있습니다"
           >

@@ -1,95 +1,63 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import styled from 'styled-components'
+
+import AppHeader, { BarButton, BarText } from '../shared/components/AppHeader'
 import { apiFetch } from '../shared/api/client'
 import { useAuth } from '../shared/auth/AuthContext'
-import OrgTree from '../shared/components/OrgTree'
 import PublishToOrgDialog from '../shared/components/PublishToOrgDialog'
-import { OrgDeleteModal, OrgFormModal } from '../shared/components/OrgModals'
 import WorkflowSection from '../shared/components/WorkflowSection'
 
 /** 휴지통은 조직이 아니지만 트리에서 한 자리를 차지한다. slug 와 겹치지 않는 값. */
-const TRASH = '__trash__'
+// 껍데기가 트리와 함께 들고 있다. 홈은 「지금 무엇을 보는가」만 안다.
+import { TRASH } from '../shared/components/AppShell'
+// 워크플로 만들기도 같은 창을 쓴다 — 이름 하나 받는 일은 같다.
+import { OrgFormModal } from '../shared/components/OrgModals'
 
 
 // ============================================
 // Styled Components
 // ============================================
 const PageWrapper = styled.div`
-  min-height: 100vh;
-  background: #f0f2f5;
+  /* 껍데기가 이미 화면 높이를 잡았다. 여기서 또 100vh 를 쓰면
+     사이드바 높이만큼 아래로 넘친다. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--bg));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `
 
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-`
-
-const UserArea = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.88rem;
-  color: #d0d0da;
-`
-
-const UserName = styled.span`
-  font-weight: 600;
-  color: white;
-`
-
-const HeaderBtn = styled.button`
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  padding: 7px 14px;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-`
-
-const Header = styled.header`
-  background: #1a1a2e;
-  color: white;
-  padding: 32px 48px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-`
-
-const HeaderTitle = styled.h1`
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-`
-
-const HeaderSubtitle = styled.p`
-  font-size: 0.95rem;
-  color: #a0a0b0;
-  margin: 0;
-`
-
-/** 왼쪽 트리 + 오른쪽 카드. 트리는 화면의 뼈대라 스크롤과 무관하게 자리를 지킨다. */
+/**
+ * 왼쪽 트리 + 오른쪽 카드.
+ *
+ * 트리는 화면의 뼈대라 자리를 지킨다 — **트리와 카드가 따로 구른다.**
+ * 함께 구르면 카드를 보려고 내렸을 때 조직 트리가 위로 사라져, 다른
+ * 조직으로 옮기려면 도로 올라가야 한다.
+ */
 const Body = styled.div`
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: stretch;
-  min-height: calc(100vh - 150px);
 
   @media (max-width: 900px) {
     flex-direction: column;
+    overflow-y: auto;
   }
 `
 
 const Main = styled.div`
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+
+  /* 좁은 화면에서는 트리가 위로 접히므로 바깥이 통째로 구른다. */
+  @media (max-width: 900px) {
+    overflow-y: visible;
+  }
 `
 
 /** 지금 어느 자리를 보고 있는지. 없으면 목록이 비었을 때 "카드가 없는 것" 인지
@@ -97,10 +65,10 @@ const Main = styled.div`
 const Crumb = styled.div`
   padding: 22px 48px 0;
   font-size: 0.9rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
 
   b {
-    color: #1a1a2e;
+    color: hsl(var(--fg));
     font-size: 1.05rem;
   }
 `
@@ -108,10 +76,10 @@ const Crumb = styled.div`
 const OrgErrorBar = styled.div`
   margin: 14px 48px 0;
   padding: 10px 14px;
-  background: #fdf3f2;
-  border: 1px solid #f5d9d6;
-  border-radius: 6px;
-  color: #a33a2c;
+  background: hsl(var(--danger-soft));
+  border: 1px solid hsl(var(--danger-border));
+  border-radius: var(--radius);
+  color: hsl(var(--danger));
   font-size: 0.84rem;
   display: flex;
   align-items: center;
@@ -122,14 +90,14 @@ const CloseX = styled.button`
   margin-left: auto;
   border: none;
   background: none;
-  color: #a33a2c;
+  color: hsl(var(--danger));
   cursor: pointer;
   font-size: 0.8rem;
 `
 
 const EmptyNote = styled.div`
   padding: 48px;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
   font-size: 0.9rem;
   line-height: 1.7;
 `
@@ -144,30 +112,30 @@ const SearchRow = styled.div`
 const SearchInput = styled.input`
   flex: 1;
   padding: 10px 14px;
-  border: 1px solid #dfe3ea;
-  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.9rem;
-  background: white;
+  background: hsl(var(--surface));
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
 const ClearBtn = styled.button`
   padding: 8px 14px;
-  border: 1px solid #dfe3ea;
-  border-radius: 8px;
-  background: white;
-  color: #6b7280;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
   font-size: 0.83rem;
   cursor: pointer;
   white-space: nowrap;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
@@ -182,9 +150,9 @@ const MatchChip = styled.span`
   font-size: 0.68rem;
   padding: 2px 7px;
   border-radius: 999px;
-  background: #fff6dd;
-  color: #8a6d1a;
-  border: 1px solid #f0d98c;
+  background: hsl(var(--warn-soft));
+  color: hsl(var(--warn));
+  border: 1px solid hsl(var(--warn-border));
 `
 
 const OrgChips = styled.div`
@@ -198,8 +166,8 @@ const OrgChip = styled.span`
   font-size: 0.68rem;
   padding: 2px 7px;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #4f5d8f;
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--fg-muted));
 `
 
 /** 카드 오른쪽 위. 삭제(✕)와 같은 줄에 두면 잘못 누르기 쉬워 왼쪽에 둔다. */
@@ -209,25 +177,25 @@ const CopyBtn = styled.button`
   right: 40px;
   border: none;
   background: none;
-  color: #b8bec8;
+  color: hsl(var(--fg-subtle));
   font-size: 0.72rem;
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 
   &:hover {
-    background: #eef2ff;
-    color: #3498db;
+    background: hsl(var(--accent-soft));
+    color: hsl(var(--primary));
   }
 `
 
 const NoticeBar = styled.div`
   margin: 14px 48px 0;
   padding: 10px 14px;
-  background: #eef6fd;
-  border: 1px solid #cfe4f7;
-  border-radius: 6px;
-  color: #35618a;
+  background: hsl(var(--info-soft));
+  border: 1px solid hsl(var(--info-border));
+  border-radius: var(--radius);
+  color: hsl(var(--info));
   font-size: 0.84rem;
   display: flex;
   align-items: center;
@@ -242,47 +210,47 @@ const TrashActions = styled.div`
 
 const RestoreBtn = styled.button`
   padding: 7px 14px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
-  background: white;
-  color: #4b5563;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
   font-size: 0.8rem;
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
 const PurgeBtn = styled(RestoreBtn)`
-  color: #c0392b;
+  color: hsl(var(--danger));
 
   &:hover {
-    border-color: #c0392b;
-    color: #c0392b;
+    border-color: hsl(var(--danger));
+    color: hsl(var(--danger));
   }
 `
 
 const DeletedNote = styled.div`
   margin-top: 10px;
   font-size: 0.73rem;
-  color: #98a2b3;
+  color: hsl(var(--fg-subtle));
 `
 
 const MountBtn = styled.button`
   margin-top: 14px;
   padding: 7px 14px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
-  background: white;
-  color: #4b5563;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
   font-size: 0.8rem;
   cursor: pointer;
 
   &:hover {
-    border-color: #3498db;
-    color: #3498db;
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
 `
 
@@ -295,22 +263,22 @@ const CardGrid = styled.div`
 `
 
 const Card = styled.div`
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   padding: 32px 28px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border-left: 4px solid ${props => props.$color || '#3498db'};
+  border: 1px solid hsl(var(--border));
+  border-left: 4px solid ${props => props.$color || 'hsl(var(--primary))'};
   position: relative;
 
   /* 초안은 한눈에 구분되어야 한다. 별도 컴포넌트를 as 로 끼우지 않고 여기서
      직접 정하는 이유는, 그러면 두 클래스가 같은 속성을 두고 다투고 승자는
      스타일시트에 먼저 들어간 쪽이 정하기 때문이다. */
   ${props => props.$draft && `
-    background: #fffdf6;
-    border: 1px dashed #e0c97a;
-    border-left: 4px solid ${props.$color || '#3498db'};
+    background: hsl(var(--warn-soft));
+    border: 1px dashed hsl(var(--warn-border));
+    border-left: 4px solid ${props.$color || 'hsl(var(--primary))'};
   `}
 
   &:hover {
@@ -326,13 +294,13 @@ const Card = styled.div`
 const CardName = styled.h3`
   font-size: 1.2rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 8px 0;
 `
 
 const CardDesc = styled.p`
   font-size: 0.9rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   margin: 0;
   line-height: 1.4;
   flex: 1;
@@ -344,18 +312,18 @@ const DeleteBtn = styled.button`
   right: 12px;
   background: none;
   border: none;
-  color: #ccc;
+  color: hsl(var(--border-strong));
   font-size: 1.1rem;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   line-height: 1;
   opacity: 0;
   transition: all 0.2s;
 
   &:hover {
-    background: #fee;
-    color: #e74c3c;
+    background: hsl(var(--danger-soft));
+    color: hsl(var(--danger));
   }
 `
 
@@ -379,16 +347,16 @@ const TagRow = styled.div`
 
 const Tag = styled.span`
   display: inline-block;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
   font-size: 0.72rem;
   font-weight: 700;
 `
 
 const AiTag = styled(Tag)`
-  background: #eef2ff;
-  color: #4053b8;
-  border: 1px solid #c9d2f5;
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
+  border: 1px solid hsl(var(--accent) / 0.35);
 `
 
 /**
@@ -399,48 +367,48 @@ const AiTag = styled(Tag)`
  * 있는 카드가 아니다.
  */
 const StaleReviewTag = styled(Tag)`
-  background: #fdecea;
-  color: #a4343a;
-  border: 1px solid #f5c6cb;
+  background: hsl(var(--danger-soft));
+  color: hsl(var(--danger));
+  border: 1px solid hsl(var(--danger-border));
 `
 
 const DraftTag = styled(Tag)`
-  background: #fff4d6;
-  color: #8a6d1a;
-  border: 1px solid #f0d98c;
+  background: hsl(var(--warn-soft));
+  color: hsl(var(--warn));
+  border: 1px solid hsl(var(--warn-border));
 `
 
 const PublishBtn = styled.button`
   margin-top: 12px;
   width: 100%;
   padding: 8px;
-  background: #8a6d1a;
+  background: hsl(var(--warn));
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    background: #a08228;
+    background: hsl(var(--warn) / 0.85);
   }
 
   &:disabled {
-    background: #bbb;
+    background: hsl(var(--border-strong));
     cursor: not-allowed;
   }
 `
 
 // 카드 추가 버튼
 const AddCard = styled.div`
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   padding: 32px 28px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border: 2px dashed #ccc;
+  border: 1px solid hsl(var(--border));
+  border: 2px dashed hsl(var(--border-strong));
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -448,8 +416,8 @@ const AddCard = styled.div`
   min-height: 120px;
 
   &:hover {
-    border-color: #3498db;
-    background: #f8fbff;
+    border-color: hsl(var(--primary));
+    background: hsl(var(--info-soft));
     transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   }
@@ -457,21 +425,21 @@ const AddCard = styled.div`
 
 const AddIcon = styled.div`
   font-size: 2rem;
-  color: #ccc;
+  color: hsl(var(--border-strong));
   margin-bottom: 8px;
 
   ${AddCard}:hover & {
-    color: #3498db;
+    color: hsl(var(--primary));
   }
 `
 
 const AddText = styled.p`
   font-size: 0.95rem;
-  color: #aaa;
+  color: hsl(var(--fg-subtle));
   margin: 0;
 
   ${AddCard}:hover & {
-    color: #3498db;
+    color: hsl(var(--primary));
   }
 `
 
@@ -490,8 +458,8 @@ const Overlay = styled.div`
 `
 
 const Modal = styled.div`
-  background: white;
-  border-radius: 12px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius-lg);
   padding: 32px;
   width: 420px;
   max-width: 90vw;
@@ -501,7 +469,7 @@ const Modal = styled.div`
 const ModalTitle = styled.h2`
   font-size: 1.3rem;
   font-weight: 600;
-  color: #333;
+  color: hsl(var(--fg));
   margin: 0 0 24px 0;
 `
 
@@ -513,30 +481,30 @@ const Label = styled.label`
   display: block;
   font-size: 0.9rem;
   font-weight: 500;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin-bottom: 6px;
 `
 
 const Input = styled.input`
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.95rem;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
 const TextArea = styled.textarea`
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.95rem;
   outline: none;
   box-sizing: border-box;
@@ -545,7 +513,7 @@ const TextArea = styled.textarea`
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
@@ -558,7 +526,7 @@ const ButtonRow = styled.div`
 
 const Button = styled.button`
   padding: 10px 24px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
@@ -567,30 +535,30 @@ const Button = styled.button`
 `
 
 const CancelButton = styled(Button)`
-  background: #f0f0f0;
-  color: #666;
+  background: hsl(var(--bg));
+  color: hsl(var(--fg-muted));
 
   &:hover {
-    background: #e0e0e0;
+    background: hsl(var(--border));
   }
 `
 
 const SubmitButton = styled(Button)`
-  background: #3498db;
+  background: hsl(var(--primary));
   color: white;
 
   &:hover {
-    background: #2980b9;
+    background: hsl(var(--primary));
   }
 
   &:disabled {
-    background: #b0d4f1;
+    background: hsl(var(--primary) / 0.45);
     cursor: not-allowed;
   }
 `
 
 const ErrorMsg = styled.p`
-  color: #e74c3c;
+  color: hsl(var(--danger));
   font-size: 0.85rem;
   margin: -12px 0 16px 0;
 `
@@ -608,12 +576,20 @@ function MainPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 조직 트리. `selected` 가 빈 문자열이면 전체 보기다.
-  const [tree, setTree] = useState([])
-  const [personal, setPersonal] = useState(null)
-  const [selected, setSelected] = useState('')
+  /**
+   * 지금 어느 조직을 보는가 — **주소에 있다.**
+   *
+   * 트리가 껍데기로 올라가면서 상태를 나눠 가져야 했는데, 위로 올려 내려보내는
+   * 대신 주소에 두었다. 링크로 나눌 수 있고 새로고침해도 그대로다.
+   * 빈 문자열이면 전체 보기.
+   */
+  const [params, setParams] = useSearchParams()
+
+  /** 보는 조직을 바꾼다. 주소가 곧 상태라 뒤로 가기도 그대로 먹는다. */
+  const goToOrg = (slug) => setParams(slug ? { org: slug } : {})
+  const selected = params.get('org') || ''
+  const { tree, personal, refreshTree } = useOutletContext()
   const [mountTarget, setMountTarget] = useState(null)
-  const [trashCount, setTrashCount] = useState(0)
   const [workflows, setWorkflows] = useState([])
   // 입력 중인 글자와 **실제로 보낸 검색어**를 나눈다. 한 글자마다 요청을
   // 보내면 타이핑이 끊기고, 서버는 버려질 결과를 계속 만든다.
@@ -623,7 +599,6 @@ function MainPage() {
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
-    fetchTree()
   }, [])
 
   // 고른 자리가 바뀌면 목록을 다시 받는다. **화면에서 거르지 않는다** — 거르면
@@ -638,26 +613,6 @@ function MainPage() {
     const timer = setTimeout(() => setQuery(searchInput.trim()), 250)
     return () => clearTimeout(timer)
   }, [searchInput])
-
-  const fetchTree = async () => {
-    try {
-      const res = await apiFetch('/orgs/tree')
-      const data = await res.json()
-      setTree(data.tree || [])
-      setPersonal(data.personal || null)
-    } catch (err) {
-      console.error('Failed to fetch org tree:', err)
-    }
-    // 휴지통 개수는 조직 트리에 없다 — 조직이 아니기 때문이다. 옆에서 따로
-    // 세어 트리와 같은 시점에 갱신한다.
-    try {
-      const res = await apiFetch('/cards/trash')
-      const rows = await res.json()
-      setTrashCount(Array.isArray(rows) ? rows.length : 0)
-    } catch {
-      setTrashCount(0)
-    }
-  }
 
   const fetchCards = async (org, q = '') => {
     try {
@@ -707,7 +662,7 @@ function MainPage() {
   const refresh = () => {
     fetchCards(selected, query)
     fetchWorkflows(selected, query)
-    fetchTree()
+    refreshTree()
   }
 
   // --- 조직 관리 (관리자) -------------------------------------------------------
@@ -716,84 +671,13 @@ function MainPage() {
   // 오류 문구다. 모달이 서버 응답을 직접 읽게 하면 API 경로가 두 곳으로 갈리고,
   // 실패했을 때 창을 닫을지 남길지 판단도 두 곳에 생긴다.
 
-  const [orgForm, setOrgForm] = useState(null)      // {mode, parentSlug, parentName, org}
-  const [orgDelete, setOrgDelete] = useState(null)  // {org, childCount}
+  /** 이 화면에서 난 문제 한 줄. 조직·카드·워크플로가 같이 쓴다. */
   const [orgError, setOrgError] = useState('')
 
   const errorFrom = async (res) => {
     if (res.ok) return ''
     const body = await res.json().catch(() => ({}))
     return body.error || '처리하지 못했습니다.'
-  }
-
-  /** 트리에서 노드를 찾는다 — 하위 개수는 삭제 모달이 미리 알려 주는 데 쓴다. */
-  const findNode = (nodes, slug) => {
-    for (const n of nodes) {
-      if (n.slug === slug) return n
-      const hit = findNode(n.children || [], slug)
-      if (hit) return hit
-    }
-    return null
-  }
-
-  const openAddOrg = (parentSlug) => {
-    const parent = parentSlug ? findNode(tree, parentSlug) : null
-    setOrgForm({ mode: 'create', parentSlug, parentName: parent?.name })
-  }
-
-  const openRenameOrg = (org) => setOrgForm({ mode: 'rename', org })
-
-  const openDeleteOrg = (org) => {
-    const node = findNode(tree, org.slug)
-    setOrgDelete({ org: node || org, childCount: (node?.children || []).length })
-  }
-
-  const submitOrgForm = async (name) => {
-    const creating = orgForm.mode === 'create'
-    const res = creating
-      ? await apiFetch('/orgs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, parent_slug: orgForm.parentSlug || null }),
-        })
-      : // 이름만 바꾼다. 주소(slug)는 그대로 둔다 — 바꾸면 저장해 둔 링크가 죽는다.
-        await apiFetch(`/orgs/${encodeURIComponent(orgForm.org.slug)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        })
-    const message = await errorFrom(res)
-    if (!message) fetchTree()
-    return message
-  }
-
-  const confirmOrgDelete = async () => {
-    const slug = orgDelete.org.slug
-    const res = await apiFetch(`/orgs/${encodeURIComponent(slug)}`, { method: 'DELETE' })
-    const message = await errorFrom(res)
-    if (!message) {
-      if (selected === slug) setSelected('')
-      fetchTree()
-    }
-    return message
-  }
-
-  /**
-   * 드래그로 옮긴 결과를 보낸다.
-   *
-   * 순서 매기기는 서버가 한다 — 화면이 형제 전부의 번호를 계산해 보내면 요청이
-   * 여러 개로 쪼개지고, 그중 하나가 실패하면 트리가 반쯤 옮겨진 채 남는다.
-   */
-  const handleMoveOrg = async (slug, parentSlug, position) => {
-    const res = await apiFetch(`/orgs/${encodeURIComponent(slug)}/move`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parent_slug: parentSlug, position }),
-    })
-    setOrgError(await errorFrom(res))
-    // 성공이든 실패든 서버 상태로 다시 그린다. 실패했는데 화면만 옮겨져 있으면
-    // 다음 드래그가 있지도 않은 자리를 기준으로 계산된다.
-    fetchTree()
   }
 
   /**
@@ -903,12 +787,12 @@ function MainPage() {
       return
     }
     const body = await res.json()
-    await fetchTree()
+    await refreshTree()
     // **자리를 옮기든 아니든 목록은 다시 받는다.** 같은 값으로 setSelected 하면
     // 상태가 안 바뀌어 useEffect 가 돌지 않는다 — 이미 「내 카드」를 보던 중이면
     // 방금 만든 사본이 새로고침 전까지 안 나온다.
     const target = personal ? personal.slug : selected
-    setSelected(target)
+    goToOrg(target)
     fetchCards(target)
     setOrgError('')
     setNotice(`${body.message} 「내 카드」에 초안으로 놓였습니다.`)
@@ -930,9 +814,9 @@ function MainPage() {
     // 만든 것은 내 공간에 초안으로 놓인다. 조직 화면에 남으면 방금 만든
     // 것이 어디 갔는지 찾게 된다 — 카드 복제와 같은 이유다.
     const target = personal ? personal.slug : selected
-    setSelected(target)
+    goToOrg(target)
     fetchWorkflows(target, '')
-    fetchTree()
+    refreshTree()
     setNotice(`'${wf.name}' 워크플로를 만들었습니다. 「내 공간」에 초안으로 놓였습니다.`)
     return ''
   }
@@ -1027,42 +911,25 @@ function MainPage() {
 
   return (
     <PageWrapper>
-      <Header>
-        <HeaderRow>
-          <div>
-            <HeaderTitle>Mechanical Design</HeaderTitle>
-            <HeaderSubtitle>기계설계 엔지니어링 도구 모음</HeaderSubtitle>
-          </div>
-          {user && (
-            <UserArea>
-              <UserName>{user.display_name}</UserName>
-              {user.is_admin && (
-                <HeaderBtn onClick={() => navigate('/accounts')}>계정 관리</HeaderBtn>
-              )}
-              <HeaderBtn onClick={() => navigate('/records')}>계산 기록</HeaderBtn>
-              <HeaderBtn onClick={() => navigate('/tokens')}>토큰</HeaderBtn>
-              <HeaderBtn onClick={() => navigate('/change-password')}>비밀번호</HeaderBtn>
-              <HeaderBtn onClick={logout}>로그아웃</HeaderBtn>
-            </UserArea>
-          )}
-        </HeaderRow>
-      </Header>
+      {/* 홈 화면 자신이라 「← 홈」 은 넘기지 않는다. */}
+      <AppHeader
+        title="Mechanical Design"
+        subtitle="기계설계 엔지니어링 도구 모음"
+        right={user && (
+          <>
+            <BarText>{user.display_name}</BarText>
+            {user.is_admin && (
+              <BarButton onClick={() => navigate('/accounts')}>계정 관리</BarButton>
+            )}
+            <BarButton onClick={() => navigate('/records')}>계산 기록</BarButton>
+            <BarButton onClick={() => navigate('/tokens')}>토큰</BarButton>
+            <BarButton onClick={() => navigate('/change-password')}>비밀번호</BarButton>
+            <BarButton onClick={logout}>로그아웃</BarButton>
+          </>
+        )}
+      />
 
       <Body>
-        <OrgTree
-          tree={tree}
-          personal={personal}
-          selected={selected}
-          onSelect={setSelected}
-          isAdmin={!!user?.is_admin}
-          onAdd={openAddOrg}
-          onRename={openRenameOrg}
-          onDelete={openDeleteOrg}
-          onMove={handleMoveOrg}
-          trashSlug={TRASH}
-          trashCount={trashCount}
-        />
-
         <Main>
           <SearchRow>
             <SearchInput
@@ -1228,25 +1095,6 @@ function MainPage() {
           kind="워크플로"
           onSubmit={submitWorkflow}
           onClose={() => setWfForm(null)}
-        />
-      )}
-
-      {orgForm && (
-        <OrgFormModal
-          mode={orgForm.mode}
-          parentName={orgForm.parentName}
-          initialName={orgForm.org?.name || ''}
-          onSubmit={submitOrgForm}
-          onClose={() => setOrgForm(null)}
-        />
-      )}
-
-      {orgDelete && (
-        <OrgDeleteModal
-          org={orgDelete.org}
-          childCount={orgDelete.childCount}
-          onConfirm={confirmOrgDelete}
-          onClose={() => setOrgDelete(null)}
         />
       )}
 

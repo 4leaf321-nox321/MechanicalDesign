@@ -13,12 +13,13 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
+import AppHeader from '../../shared/components/AppHeader'
 
 import { api } from '../../shared/api/client'
 import { useAuth } from '../../shared/auth/AuthContext'
 
 const STATE_LABEL = { active: '사용 중', expired: '만료됨', revoked: '폐기됨' }
-const STATE_COLOR = { active: '#2f6b34', expired: '#b8860b', revoked: '#a4343a' }
+const STATE_COLOR = { active: 'hsl(var(--ok))', expired: 'hsl(var(--warn))', revoked: 'hsl(var(--danger))' }
 
 const EXPIRY_CHOICES = [
   { days: 30, label: '30일' },
@@ -28,70 +29,42 @@ const EXPIRY_CHOICES = [
 ]
 
 const Page = styled.div`
-  min-height: 100vh;
-  background: #f0f2f5;
+  /* 껍데기가 이미 화면 높이를 잡았다. 여기서 또 100vh 를 쓰면
+     사이드바 높이만큼 아래로 넘친다. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--bg));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `
 
-const Header = styled.header`
-  background: #1a1a2e;
-  color: white;
-  padding: 28px 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-`
-
-const HeaderTitle = styled.h1`
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 0;
-`
-
-const HeaderSub = styled.p`
-  margin: 5px 0 0 0;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.6);
-`
-
-const GhostBtn = styled.button`
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  cursor: pointer;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-`
-
 const Body = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 32px 48px;
   max-width: 960px;
 `
 
 const Panel = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   padding: 24px 26px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid hsl(var(--border));
   margin-bottom: 22px;
 `
 
 const PanelTitle = styled.h2`
   font-size: 1.05rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   margin: 0 0 6px 0;
 `
 
 const PanelNote = styled.p`
   font-size: 0.85rem;
-  color: #888;
+  color: hsl(var(--fg-subtle));
   line-height: 1.55;
   margin: 0 0 18px 0;
 `
@@ -112,7 +85,7 @@ const FieldLabel = styled.span`
   display: block;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #555;
+  color: hsl(var(--fg-muted));
   margin-bottom: 6px;
 `
 
@@ -120,40 +93,40 @@ const Input = styled.input`
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.92rem;
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
 const Select = styled.select`
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   font-size: 0.92rem;
-  background: white;
+  background: hsl(var(--surface));
 `
 
 const PrimaryBtn = styled.button`
   padding: 10px 20px;
-  background: #1a1a2e;
-  color: white;
+  background: hsl(var(--fg));
+  color: hsl(var(--solid-fg));
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    background: #2a2a4e;
+    background: hsl(var(--header-bg) / 0.85);
   }
 
   &:disabled {
-    background: #aaa;
+    background: hsl(var(--fg-subtle));
     cursor: not-allowed;
   }
 `
@@ -161,14 +134,14 @@ const PrimaryBtn = styled.button`
 const DangerBtn = styled.button`
   padding: 6px 12px;
   background: none;
-  border: 1px solid #e0b4b4;
-  color: #a4343a;
-  border-radius: 5px;
+  border: 1px solid hsl(var(--danger-border));
+  color: hsl(var(--danger));
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    background: #fdecea;
+    background: hsl(var(--danger-soft));
   }
 
   &:disabled {
@@ -178,10 +151,10 @@ const DangerBtn = styled.button`
 `
 
 const ErrorBox = styled.div`
-  background: #fdecea;
-  border: 1px solid #f5c6cb;
-  color: #a4343a;
-  border-radius: 6px;
+  background: hsl(var(--danger-soft));
+  border: 1px solid hsl(var(--danger-border));
+  color: hsl(var(--danger));
+  border-radius: var(--radius);
   padding: 11px 13px;
   font-size: 0.85rem;
   line-height: 1.45;
@@ -191,9 +164,9 @@ const ErrorBox = styled.div`
 
 /** 새로 발급된 토큰. 눈에 띄어야 하므로 목록과 다른 색으로 크게 잡는다. */
 const SecretBox = styled.div`
-  background: #fff8e1;
-  border: 1px solid #f0d98c;
-  border-radius: 8px;
+  background: hsl(var(--warn-soft));
+  border: 1px solid hsl(var(--warn-border));
+  border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 20px;
 `
@@ -201,19 +174,19 @@ const SecretBox = styled.div`
 const SecretTitle = styled.div`
   font-size: 0.9rem;
   font-weight: 700;
-  color: #8a6d1a;
+  color: hsl(var(--warn));
   margin-bottom: 8px;
 `
 
 const SecretValue = styled.code`
   display: block;
-  background: white;
-  border: 1px solid #e8dcb0;
-  border-radius: 5px;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--warn-border));
+  border-radius: var(--radius-sm);
   padding: 11px 13px;
   font-family: 'Consolas', 'Menlo', monospace;
   font-size: 0.86rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
   word-break: break-all;
   margin-bottom: 10px;
 `
@@ -221,16 +194,16 @@ const SecretValue = styled.code`
 const SecretNote = styled.p`
   margin: 0;
   font-size: 0.82rem;
-  color: #8a6d1a;
+  color: hsl(var(--warn));
   line-height: 1.5;
 `
 
 const CopyBtn = styled.button`
   padding: 7px 14px;
-  background: #8a6d1a;
-  color: white;
+  background: hsl(var(--warn));
+  color: hsl(var(--solid-fg));
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
@@ -247,9 +220,9 @@ const CopyBtn = styled.button`
  */
 const Command = styled.code`
   display: block;
-  background: #1a1a2e;
-  color: #e6e6e6;
-  border-radius: 6px;
+  background: hsl(var(--fg));
+  color: hsl(var(--header-fg) / 0.9);
+  border-radius: var(--radius);
   padding: 12px 14px;
   font-family: 'Consolas', 'Menlo', monospace;
   font-size: 0.8rem;
@@ -267,40 +240,40 @@ const Table = styled.table`
 const Th = styled.th`
   text-align: left;
   padding: 10px 12px;
-  border-bottom: 2px solid #eee;
-  color: #666;
+  border-bottom: 2px solid hsl(var(--border));
+  color: hsl(var(--fg-muted));
   font-weight: 600;
   font-size: 0.82rem;
 `
 
 const Td = styled.td`
   padding: 11px 12px;
-  border-bottom: 1px solid #f2f2f2;
-  color: #333;
+  border-bottom: 1px solid hsl(var(--surface-2));
+  color: hsl(var(--fg));
   vertical-align: middle;
 `
 
 const Mono = styled.span`
   font-family: 'Consolas', 'Menlo', monospace;
-  color: #666;
+  color: hsl(var(--fg-muted));
 `
 
 const StateTag = styled.span`
-  color: ${(p) => STATE_COLOR[p.$state] || '#666'};
+  color: ${(p) => STATE_COLOR[p.$state] || 'hsl(var(--fg-muted))'};
   font-weight: 600;
   font-size: 0.82rem;
 `
 
 const Empty = styled.p`
-  color: #999;
+  color: hsl(var(--fg-subtle));
   font-size: 0.88rem;
   margin: 6px 0 0 0;
 `
 
 const Steps = styled.pre`
-  background: #1a1a2e;
-  color: #e6e6e6;
-  border-radius: 6px;
+  background: hsl(var(--fg));
+  color: hsl(var(--header-fg) / 0.9);
+  border-radius: var(--radius);
   padding: 14px 16px;
   font-family: 'Consolas', 'Menlo', monospace;
   font-size: 0.82rem;
@@ -412,13 +385,11 @@ export default function TokensPage() {
 
   return (
     <Page>
-      <Header>
-        <div>
-          <HeaderTitle>내 액세스 토큰</HeaderTitle>
-          <HeaderSub>{user?.display_name} — MCP·스크립트가 내 권한으로 붙을 때 쓰는 자격 증명</HeaderSub>
-        </div>
-        <GhostBtn onClick={() => navigate('/')}>← 홈으로</GhostBtn>
-      </Header>
+      <AppHeader
+        title="내 액세스 토큰"
+        subtitle={`${user?.display_name || ''} — MCP·스크립트가 내 권한으로 붙을 때 쓰는 자격 증명`}
+        onHome={() => navigate('/')}
+      />
 
       <Body>
         {error && <ErrorBox>{error}</ErrorBox>}

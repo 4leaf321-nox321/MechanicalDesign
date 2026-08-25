@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mechanical Design</title>
+    <script>
+      /*
+       * React 가 뜨기 전에 판을 정한다. 안 하면 어두운 판을 고른 사람이 첫
+       * 프레임에 흰 화면을 본다 — 짧지만 눈에 확 띈다.
+       *
+       * ThemeContext 와 같은 규칙을 두 곳에 두는 셈인데, 한쪽이 어긋나도
+       * 판이 한 번 튀고 마는 정도라 깜빡임을 없애는 값이 더 크다.
+       */
+      (function () {
+        try {
+          var saved = localStorage.getItem('md:theme:v1')
+          var dark = saved === 'dark' || (saved !== 'light'
+            && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) { /* 저장이 막힌 곳도 있다 */ }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

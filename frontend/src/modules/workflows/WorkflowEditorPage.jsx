@@ -10,12 +10,19 @@
  * 고칠 수 있는데 무시되는 것이 이 화면에서 가장 나쁜 실패다.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, {
+  useCallback, useDeferredValue, useEffect, useMemo, useState,
+} from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../../shared/api/client'
 import { validateWorkflow } from '../../shared/utils/workflowValidate'
 import { STATUS, runWorkflow, terminalNodes } from '../../shared/utils/workflowEngine'
+import { executionBlocks } from '../../shared/utils/scc'
 import { fmt } from '../../shared/utils/goalSeek'
+import AppHeader, { BarButton } from '../../shared/components/AppHeader'
+import RecordPicker from '../../shared/components/RecordPicker'
+import { describeLoad, mapWorkflowInputs } from './loadWorkflowInputs'
+import WorkflowCanvas from './WorkflowCanvas'
 import * as S from './editorStyles'
 
 function WorkflowEditorPage() {
@@ -29,9 +36,20 @@ function WorkflowEditorPage() {
   const [notice, setNotice] = useState('')
   const [picking, setPicking] = useState(false)
   const [linking, setLinking] = useState(null)   // { fromNode, fromVar, toNode, toVar }
-  const [run, setRun] = useState(null)
   const [recordTitle, setRecordTitle] = useState('')
   const [saving, setSaving] = useState(false)
+  // 순서도와 표는 **같은 연결을 다르게 보는 것**이다. 자료를 나누지 않고
+  // 보는 방법만 바꾼다.
+  const [view, setView] = useState('canvas')
+
+  // 아직 못 불러왔을 수 있으니 옵셔널로. 좌표 저장 콜백이 이 값 하나만
+  // 의존하게 두면 워크플로가 바뀔 때마다 새로 만들어지지 않는다.
+  const wfId = workflow?.id
+
+  // 카드를 고르는 `picking` 과 다른 창이다. 하나는 무엇을 넣을지,
+  // 다른 하나는 어떤 값으로 채울지를 고른다.
+  const [loadingRecord, setLoadingRecord] = useState(false)
+  const [loadMsg, setLoadMsg] = useState(null)
 
   const load = useCallback(async () => {
     const route = decodeURIComponent(location.pathname)
@@ -41,17 +59,21 @@ function WorkflowEditorPage() {
       return
     }
     const wf = await res.json()
-    setWorkflow(wf)
 
     // 노드가 쓰는 카드의 변수를 **한 번에** 받는다. 노드마다 따로 부르면 그중
     // 하나가 늦게 와서 화면이 반쯤 그려진 상태로 남는다.
     const ids = [...new Set(wf.nodes.map(n => n.card_id))]
+    let vars = {}
     if (ids.length) {
       const vres = await apiFetch(`/cards/variables?ids=${ids.join(',')}`)
-      if (vres.ok) setCardVariables(await vres.json())
-    } else {
-      setCardVariables({})
+      if (vres.ok) vars = await vres.json()
     }
+
+    // 워크플로와 변수를 **같이** 넣는다. 워크플로만 먼저 넣으면 변수가 없는
+    // 한 프레임이 생기고, 그 프레임에서는 모든 배선이 끊어진 것으로 보인다 —
+    // 검증이 빨갛게 번쩍이고 계산도 건너뛴다.
+    setWorkflow(wf)
+    setCardVariables(vars)
   }, [location.pathname])
 
   useEffect(() => { load() }, [load])
@@ -69,6 +91,62 @@ function WorkflowEditorPage() {
     [workflow, cardVariables],
   )
 
+  /**
+   * 값이 바뀌면 **바로 다시 돈다.** 「돌리기」 단추는 두지 않는다.
+   *
+   * 단추를 두면 화면의 숫자가 지금 값의 결과인지 아까 눌렀을 때의 결과인지
+   * 알 수 없다. 파생값으로 두면 어긋날 자리가 아예 없다.
+   *
+   * ## 계산이 길어지면
+   *
+   * 단추는 그 답이 못 된다 — 기다리는 시점만 옮길 뿐 빨라지지 않고, 대신
+   * 어긋남을 도로 불러온다. 진짜 문제는 **렌더를 막는 것**이라 그쪽을 푼다.
+   *
+   * 재 본 값(노드마다 배열 연산 몇 개씩):
+   *
+   *     노드 3개, 스칼라만        0.3ms   ← 지금 쓰는 규모
+   *     노드 20개 × 배열 1만개  136ms
+   *     노드 100개 × 배열 1만개 675ms   ← 엔진이 허용하는 최악
+   *
+   * `range` 가 배열을 1만개로 막아 두어 노드당 일은 위가 있다. 그래서 최악도
+   * 1초 아래고, 값을 **확정할 때마다** 한 번이지 글자마다가 아니다.
+   *
+   * `useDeferredValue` 로 계산을 뒤로 미룬다. 브라우저가 바뀐 입력을 먼저
+   * 그리고 나서 계산하므로, 오래 걸려도 화면이 멎지 않는다. 그동안 보이는
+   * 숫자는 이전 것이라 **낡았다고 표시한다** — 말없이 옛 숫자를 두는 것이
+   * 단추를 두는 것과 똑같은 실패다.
+   *
+   * 오류가 있으면 돌리지 않는다 — 깨진 배선 위에서 나온 숫자를 보여 주는 것이
+   * 아무것도 안 보여 주는 것보다 나쁘다.
+   */
+  const data = useMemo(
+    () => ({ workflow, cardVariables }), [workflow, cardVariables])
+  const settled = useDeferredValue(data)
+  const calculating = settled !== data
+
+  const run = useMemo(() => {
+    const wf = settled.workflow
+    if (!wf || wf.nodes.length === 0) return null
+    // 미뤄 둔 짝으로 검증까지 다시 한다. 지금 것과 섞으면 워크플로와 변수가
+    // 어긋난 한순간에 배선이 끊어진 것으로 보인다.
+    const bad = validateWorkflow(wf, settled.cardVariables)
+      .some(i => i.level === 'error')
+    if (bad) return null
+    return runWorkflow(wf, settled.cardVariables)
+  }, [settled])
+
+  /**
+   * 고리를 닫는 선들. 계산기와 **같은 함수**로 찾는다 — 화면이 따로 판단하면
+   * 초기값을 넣으라고 표시한 칸과 계산기가 읽는 칸이 서로 달라진다.
+   */
+  const feedbackIds = useMemo(() => {
+    const out = new Set()
+    for (const block of executionBlocks(workflow?.nodes, workflow?.links)) {
+      for (const link of block.feedback) out.add(String(link.id))
+    }
+    return out
+  }, [workflow?.nodes, workflow?.links])
+
   /** 어느 입력이 연결로 채워지는가. 편집을 막는 판단의 근거다. */
   const linkedInputs = useMemo(() => {
     const map = new Map()
@@ -80,9 +158,6 @@ function WorkflowEditorPage() {
 
   const call = async (path, options) => {
     setError('')
-    // 배선이나 값이 바뀌면 지난 실행 결과는 더 이상 이 워크플로의 결과가
-    // 아니다. 남겨 두면 바뀐 화면 아래에 옛 숫자가 붙어 있게 된다.
-    setRun(null)
     const res = await apiFetch(path, options)
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -102,23 +177,55 @@ function WorkflowEditorPage() {
     })
   }
 
-  const removeNode = async (node) => {
-    const linked = (workflow.links || []).filter(
+  /**
+   * 카드를 뺀다. **몇 개의 연결이 함께 끊기는지 먼저 말한다.**
+   *
+   * 순서도에서는 카드 하나가 여러 선의 출발점일 수 있어서, 하나를 빼면
+   * 그림의 절반이 사라지기도 한다. 그것을 누른 뒤에 알게 하면 안 된다.
+   *
+   * `useCallback` 인 것은 캔버스 노드 자료에 실려 가기 때문이다 —
+   * `setInput` 과 같은 이유로, 매번 새로 만들면 렌더가 무한히 돈다.
+   */
+  const removeNode = useCallback(async (node) => {
+    const linked = (workflow?.links || []).filter(
       l => l.from_node_id === node.id || l.to_node_id === node.id).length
     const ask = `'${node.alias}' 를 빼시겠습니까?`
       + (linked ? `\n\n이 노드에 닿은 연결 ${linked}개도 함께 끊깁니다.` : '')
     if (!window.confirm(ask)) return
-    await call(`/workflows/${workflow.id}/nodes/${node.id}`, { method: 'DELETE' })
-  }
 
-  const setInput = async (node, variableId, value) => {
+    setError('')
+    const res = await apiFetch(`/workflows/${wfId}/nodes/${node.id}`,
+                               { method: 'DELETE' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(body.error || '빼지 못했습니다.')
+      return
+    }
+    await load()
+  }, [workflow?.links, wfId, load])
+
+  /**
+   * 입력 하나를 저장한다. 순서도와 표가 **같은 길**을 쓴다.
+   *
+   * `useCallback` 인 것이 중요하다. 이 함수는 캔버스 노드 자료에 실려 가는데,
+   * 매번 새로 만들어지면 노드 자료가 매 렌더마다 바뀐 것으로 보여 캔버스가
+   * 자기 상태를 다시 넣고, 그것이 또 렌더를 부른다 — 무한히 돈다.
+   */
+  const setInput = useCallback(async (node, variableId, value) => {
+    setError('')
     const next = { ...(node.inputs || {}), [variableId]: value }
-    await call(`/workflows/${workflow.id}/nodes/${node.id}`, {
+    const res = await apiFetch(`/workflows/${wfId}/nodes/${node.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inputs: next }),
     })
-  }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(body.error || '값을 저장하지 못했습니다.')
+      return
+    }
+    await load()
+  }, [wfId, load])
 
   const addLink = async () => {
     const { fromNode, fromVar, toNode, toVar } = linking || {}
@@ -140,18 +247,45 @@ function WorkflowEditorPage() {
     }
   }
 
-  const removeLink = async (link) => {
-    await call(`/workflows/${workflow.id}/links/${link.id}`, { method: 'DELETE' })
+  const removeLink = async (linkId) => {
+    await call(`/workflows/${workflow.id}/links/${linkId}`, { method: 'DELETE' })
   }
 
-  /**
-   * 돌린다. 계산은 브라우저에서 한다 — 카드 화면과 **같은 계산기**를 쓰는
-   * 것이 중요하다. 서버가 따로 돌리면 두 곳의 답이 갈리는 날이 온다.
-   */
-  const execute = () => {
-    setError('')
-    setRun(runWorkflow(workflow, cardVariables))
+  /** 순서도에서 손잡이끼리 이었을 때. 표의 「잇기」와 같은 곳으로 간다. */
+  const connectOnCanvas = async (payload) => {
+    const body = await call(`/workflows/${workflow.id}/links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (body) setNotice('연결했습니다.')
   }
+
+  /** 옮겨 놓은 자리를 저장한다. 그림이 그 워크플로의 일부가 되도록. */
+  const moveNode = useCallback(async (nodeId, at) => {
+    // 좌표만 바뀐 것이라 `call` 을 쓰지 않는다. 여기서 화면을 다시 받으면
+    // 방금 놓은 자리가 서버 응답으로 한 번 튀어 보이고, 실행 결과도
+    // 까닭 없이 지워진다.
+    await apiFetch(`/workflows/${wfId}/nodes/${nodeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        layout_x: Math.round(at.x), layout_y: Math.round(at.y),
+      }),
+    })
+  }, [wfId])
+
+  /**
+   * 자동 배치한 좌표를 한 번만 저장한다.
+   *
+   * 저장하지 않으면 열 때마다 다시 계산되므로, 사람이 옮겨 둔 자리가
+   * 다음에 열 때 사라진 것처럼 보인다.
+   */
+  const persistLayout = useCallback(async (positions) => {
+    const entries = Object.entries(positions || {})
+    if (entries.length === 0) return
+    await Promise.all(entries.map(([id, at]) => moveNode(id, at)))
+  }, [moveNode])
 
   /**
    * 이 실행을 기록으로 남긴다.
@@ -166,11 +300,24 @@ function WorkflowEditorPage() {
 
     const inputs = {}
     const results = {}
+    const loops = []
+    const seen = new Set()
     for (const node of workflow.nodes) {
       const r = run.nodes[node.id]
       if (!r) continue
       inputs[node.id] = r.values || {}
       results[node.id] = r.results || {}
+
+      // 고리 하나에 한 줄. 블록 안 노드는 같은 반복 정보를 갖고 있다.
+      if (!r.loop?.converged) continue
+      const tag = `${r.loop.iterations}:${r.loop.residual}`
+      if (seen.has(tag)) { loops[loops.length - 1].node_ids.push(node.id); continue }
+      seen.add(tag)
+      loops.push({
+        node_ids: [node.id],
+        iterations: r.loop.iterations,
+        residual: r.loop.residual,
+      })
     }
 
     const res = await apiFetch('/records', {
@@ -178,6 +325,17 @@ function WorkflowEditorPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workflow_id: workflow.id, title: recordTitle, inputs, results,
+        // **반복 횟수만으로는 아무 말도 못 한다.** 10회가 좋은 것인지는
+        // 그때의 허용오차와 완화계수를 알아야 정해지고, 그 값들은
+        // 나중에 바뀐다. 그래서 기준을 함께 박아 둔다.
+        run_meta: loops.length ? {
+          loops,
+          iteration: {
+            tolerance: workflow.iter_tolerance,
+            max: workflow.iter_max,
+            relaxation: workflow.iter_relaxation,
+          },
+        } : undefined,
       }),
     })
     setSaving(false)
@@ -190,6 +348,47 @@ function WorkflowEditorPage() {
     setNotice('기록으로 남겼습니다. 「계산 기록」에서 다시 볼 수 있습니다.')
   }
 
+  /**
+   * 지난 기록의 입력값을 지금 워크플로에 채운다.
+   *
+   * 노드마다 따로 저장하므로 **한 번에 보내고 한 번만 다시 읽는다.** 노드마다
+   * `call` 을 쓰면 저장할 때마다 화면을 다시 받아, 다섯 노드짜리 워크플로가
+   * 다섯 번 깜빡인다.
+   */
+  const loadInputs = async (record) => {
+    const mapped = mapWorkflowInputs(record, workflow, cardVariables, feedbackIds)
+    setLoadingRecord(false)
+    setError('')
+
+    const writes = Object.entries(mapped.byNode)
+    for (const [nodeId, values] of writes) {
+      const node = nodeById.get(String(nodeId))
+      const next = { ...(node?.inputs || {}), ...values }
+      const res = await apiFetch(`/workflows/${wfId}/nodes/${nodeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: next }),
+      })
+      if (!res.ok) {
+        setError('값을 저장하지 못했습니다.')
+        return
+      }
+    }
+    await load()
+
+    const said = describeLoad(mapped)
+    setLoadMsg({ ...said, text: `'${record.title}' — ${said.text}` })
+  }
+
+  /** 반복 기준. 서버가 범위를 막으므로 여기서는 보내고 답을 그대로 보여 준다. */
+  const setIteration = async (patch) => {
+    await call(`/workflows/${workflow.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+  }
+
   const publish = async () => {
     const ok = window.confirm(
       `'${workflow.name}' 을(를) 게시합니다.\n\n`
@@ -199,12 +398,34 @@ function WorkflowEditorPage() {
     if (body) setNotice('게시했습니다.')
   }
 
-  if (error && !workflow) return <S.Wrap><S.Error>{error}</S.Error></S.Wrap>
-  if (!workflow) return <S.Wrap><S.Muted>불러오는 중…</S.Muted></S.Wrap>
+  // 못 불러온 화면에도 머리띠는 남긴다. 여기서 사라지면 홈으로 돌아갈 길이
+  // 없어서 뒤로 가기 말고는 방법이 없다.
+  const shell = (inner) => (
+    <S.Page>
+      <AppHeader title="워크플로" onHome={() => navigate('/')} />
+      <S.Wrap>{inner}</S.Wrap>
+    </S.Page>
+  )
+  if (error && !workflow) return shell(<S.Error>{error}</S.Error>)
+  if (!workflow) return shell(<S.Muted>불러오는 중…</S.Muted>)
 
   const nodeById = new Map(workflow.nodes.map(n => [String(n.id), n]))
   const errors = issues.filter(i => i.level === 'error')
   const warnings = issues.filter(i => i.level === 'warning')
+  const hasLoop = feedbackIds.size > 0
+
+  // 고리마다 한 줄만. 블록 안 노드는 같은 반복 정보를 갖고 있어서, 노드마다
+  // 찍으면 같은 말이 여러 번 나온다.
+  const loopRuns = []
+  const seenLoops = new Set()
+  for (const node of workflow.nodes) {
+    const loop = run?.nodes?.[node.id]?.loop
+    if (!loop?.converged) continue
+    const tag = `${loop.iterations}:${loop.residual}`
+    if (seenLoops.has(tag)) continue
+    seenLoops.add(tag)
+    loopRuns.push({ node, loop })
+  }
 
   const outputsOf = (nodeId) => {
     const node = nodeById.get(String(nodeId))
@@ -215,198 +436,14 @@ function WorkflowEditorPage() {
     return (cardVariables[node?.card_id] || []).filter(v => v.category === 'input')
   }
 
-  return (
-    <S.Wrap>
-      <S.Head>
-        <div>
-          <S.Back onClick={() => navigate('/')}>← 목록</S.Back>
-          <S.Title>
-            {workflow.name}
-            {workflow.status === 'draft' && <S.DraftTag>초안 · 나만 보임</S.DraftTag>}
-          </S.Title>
-          <S.Sub>
-            카드 {workflow.nodes.length}장 · 연결 {workflow.links.length}개
-          </S.Sub>
-        </div>
-        <div>
-          {workflow.status === 'draft' && (
-            <S.Primary onClick={publish} disabled={workflow.nodes.length === 0}>
-              게시하기
-            </S.Primary>
-          )}
-        </div>
-      </S.Head>
-
-      {error && <S.Error>{error}</S.Error>}
-      {notice && <S.Notice onClick={() => setNotice('')}>{notice}</S.Notice>}
-
-      {/* 검증이 먼저 온다. 카드는 살아 있는 참조라, 아래 표가 멀쩡해 보여도
-          가리키던 변수가 사라져 있을 수 있다. */}
-      <S.Panel>
-        <S.PanelHead>
-          검증
-          {errors.length > 0 && <S.Bad>오류 {errors.length}</S.Bad>}
-          {warnings.length > 0 && <S.Warn>경고 {warnings.length}</S.Warn>}
-          {issues.length === 0 && <S.Good>문제 없음</S.Good>}
-        </S.PanelHead>
-        {issues.map((issue, i) => (
-          <S.Issue key={i} $bad={issue.level === 'error'}>
-            {issue.message}
-          </S.Issue>
-        ))}
-      </S.Panel>
-
-      {/* --- 실행 -------------------------------------------------------- */}
-      {workflow.nodes.length > 0 && (
-        <S.Panel style={{ marginTop: 14 }}>
-          <S.PanelHead>
-            실행
-            <S.Primary style={{ marginLeft: 'auto' }}
-                       onClick={execute}
-                       disabled={errors.length > 0}>
-              돌리기
-            </S.Primary>
-          </S.PanelHead>
-
-          {errors.length > 0 && (
-            <S.Muted>검증 오류를 먼저 고쳐야 돌릴 수 있습니다.</S.Muted>
-          )}
-
-          {run && !run.nodes && <S.Issue $bad>{run.message}</S.Issue>}
-
-          {run?.nodes && (
-            <>
-              {/* 결론을 먼저, 크게. 중간 노드까지 같은 크기로 늘어놓으면
-                  무엇이 답인지 알 수 없다. */}
-              <S.SubTitle>결론</S.SubTitle>
-              <S.Finals>
-                {terminalNodes(workflow).map(node => {
-                  const r = run.nodes[node.id]
-                  const vars = (cardVariables[node.card_id] || [])
-                    .filter(v => v.category === 'output')
-                  return (
-                    <S.Final key={node.id} $bad={r?.status !== STATUS.ok}>
-                      <S.FinalName>{node.alias}</S.FinalName>
-                      {r?.status === STATUS.blocked ? (
-                        <S.Muted>{r.message}</S.Muted>
-                      ) : vars.length === 0 ? (
-                        <S.Muted>결과값이 없는 카드입니다.</S.Muted>
-                      ) : vars.map(v => {
-                        const cell = r?.results?.[v.id]
-                        return (
-                          <S.FinalRow key={v.id}>
-                            <span>{v.name}{v.symbol ? ` (${v.symbol})` : ''}</span>
-                            <b>
-                              {cell?.error ? '—' : fmt(cell?.value)}
-                              {!cell?.error && v.unit ? ` ${v.unit}` : ''}
-                            </b>
-                          </S.FinalRow>
-                        )
-                      })}
-                    </S.Final>
-                  )
-                })}
-              </S.Finals>
-
-              <S.SubTitle>노드별</S.SubTitle>
-              {workflow.order?.map(nodeId => {
-                const node = nodeById.get(String(nodeId))
-                const r = run.nodes[nodeId]
-                if (!node || !r) return null
-                const vars = cardVariables[node.card_id] || []
-                return (
-                  <S.RunRow key={nodeId} $status={r.status}>
-                    <S.RunName>{node.alias}</S.RunName>
-                    {r.status === STATUS.blocked ? (
-                      <S.RunWhy>{r.message}</S.RunWhy>
-                    ) : (
-                      <S.RunVals>
-                        {vars.filter(v => v.category !== 'input').map(v => {
-                          const cell = r.results?.[v.id]
-                          return (
-                            <span key={v.id}>
-                              {v.symbol || v.name}={cell?.error ? 'ERR' : fmt(cell?.value)}
-                            </span>
-                          )
-                        })}
-                      </S.RunVals>
-                    )}
-                  </S.RunRow>
-                )
-              })}
-
-              {/* 기록은 **돌린 뒤에만** 남긴다. 화면에 없는 숫자가 기록으로
-                  들어가는 것이 이 기능에서 가장 나쁜 실패다. */}
-              <S.SaveBar>
-                <S.Value style={{ width: 280 }}
-                         value={recordTitle}
-                         onChange={(e) => setRecordTitle(e.target.value)}
-                         placeholder="무슨 계산인가요? 예: Model X 브래킷" />
-                <S.Primary onClick={saveRecord}
-                           disabled={saving || !recordTitle.trim()}>
-                  {saving ? '저장 중…' : '기록 저장'}
-                </S.Primary>
-              </S.SaveBar>
-            </>
-          )}
-        </S.Panel>
-      )}
-
-      {/* --- 노드 -------------------------------------------------------- */}
-      <S.SectionTitle>노드</S.SectionTitle>
-      {workflow.nodes.length === 0 && (
-        <S.Muted>아직 비어 있습니다. 카드를 넣으면 여기에 놓입니다.</S.Muted>
-      )}
-
-      {workflow.nodes.map(node => (
-        <S.Node key={node.id} $bad={node.card_deleted}>
-          <S.NodeHead>
-            <S.NodeName>{node.alias}</S.NodeName>
-            <S.NodeCard>{node.card_name}</S.NodeCard>
-            {node.card_deleted && <S.Bad>카드가 휴지통에 있습니다</S.Bad>}
-            <S.Small onClick={() => removeNode(node)}>빼기</S.Small>
-          </S.NodeHead>
-
-          <S.Inputs>
-            {inputsOf(node.id).length === 0 && (
-              <S.Muted>이 카드에는 입력이 없습니다.</S.Muted>
-            )}
-            {inputsOf(node.id).map(v => {
-              const link = linkedInputs.get(`${node.id}:${v.id}`)
-              const stored = (node.inputs || {})[String(v.id)] ?? (node.inputs || {})[v.id]
-              return (
-                <S.InputRow key={v.id}>
-                  <S.VarName>
-                    {v.name}{v.symbol ? ` (${v.symbol})` : ''}
-                    {v.unit ? <S.Unit>{v.unit}</S.Unit> : null}
-                  </S.VarName>
-                  {link ? (
-                    // **연결된 칸은 편집하지 않는다.** 고칠 수 있는데 앞 노드
-                    // 값에 덮여 무시되는 것이 가장 나쁜 실패다.
-                    <S.Linked>
-                      ← {nodeById.get(String(link.from_node_id))?.alias}.{link.from_label}
-                    </S.Linked>
-                  ) : (
-                    <S.Value
-                      defaultValue={stored ?? ''}
-                      placeholder="값"
-                      onBlur={(e) => {
-                        const next = e.target.value
-                        if (String(stored ?? '') !== next) setInput(node, v.id, next)
-                      }}
-                    />
-                  )}
-                </S.InputRow>
-              )
-            })}
-          </S.Inputs>
-        </S.Node>
-      ))}
-
-      <S.Add onClick={() => setPicking(true)}>＋ 카드 넣기</S.Add>
-
+  /** 순서도 위에 얹을 단추. 표 보기에서는 아래쪽에 같은 것이 놓인다. */
+  const tools = (
+    <S.Tools>
+      <S.ToolButton onClick={() => setPicking(!picking)}>
+        ＋ 카드 넣기
+      </S.ToolButton>
       {picking && (
-        <S.Picker>
+        <S.Picker style={{ width: 260, marginTop: 0 }}>
           <S.PickerHead>어느 카드를 넣을까요</S.PickerHead>
           {cards.length === 0 && <S.Muted>넣을 수 있는 카드가 없습니다.</S.Muted>}
           {cards.map(c => (
@@ -418,70 +455,375 @@ function WorkflowEditorPage() {
           <S.Small onClick={() => setPicking(false)}>닫기</S.Small>
         </S.Picker>
       )}
+    </S.Tools>
+  )
 
-      {/* --- 연결 -------------------------------------------------------- */}
-      <S.SectionTitle>연결</S.SectionTitle>
-      {workflow.links.length === 0 && (
-        <S.Muted>
-          아직 연결이 없습니다. 앞 카드의 결과를 뒤 카드의 입력으로 이으면
-          값이 흐릅니다.
-        </S.Muted>
-      )}
+  return (
+    <S.Page>
+      {/* 다른 화면과 같은 머리띠. 여기만 없어서 들어오면 홈으로 갈 길이
+          사라지고, 띠 높이가 달라 같은 앱이 아닌 것처럼 보였다. */}
+      <AppHeader
+        title={workflow.name}
+        subtitle={`카드 ${workflow.nodes.length}장 · 연결`
+          + ` ${workflow.links.length}개`
+          + (workflow.status === 'draft' ? ' · 초안 (나만 보임)' : '')}
+        onHome={() => navigate('/')}
+        right={(
+          <>
+            <BarButton onClick={() => { setLoadMsg(null); setLoadingRecord(true) }}
+                       disabled={workflow.nodes.length === 0}>
+              이전 입력 불러오기
+            </BarButton>
+            <BarButton onClick={() => navigate(`/records?workflow_id=${workflow.id}`)}>
+              계산 기록
+            </BarButton>
+            {workflow.status === 'draft' && (
+              <BarButton onClick={publish} disabled={workflow.nodes.length === 0}>
+                게시하기
+              </BarButton>
+            )}
+          </>
+        )}
+      />
 
-      {workflow.links.map(link => (
-        <S.Link key={link.id}>
-          <span>
-            <b>{nodeById.get(String(link.from_node_id))?.alias}</b>.{link.from_label}
-            {'  →  '}
-            <b>{nodeById.get(String(link.to_node_id))?.alias}</b>.{link.to_label}
-          </span>
-          <S.Small onClick={() => removeLink(link)}>끊기</S.Small>
-        </S.Link>
-      ))}
+      <S.Wrap>
+        {/* 이름과 단추는 머리띠로 갔다. 여기 남은 것은 **무엇을 보고 있는가** 뿐이라
+            한 줄을 통째로 쓰지 않고 오른쪽에 붙인다. */}
+        <S.Head>
+          <S.ViewTabs style={{ marginLeft: 'auto' }}>
+            <S.ViewTab $on={view === 'canvas'} onClick={() => setView('canvas')}>
+              순서도
+            </S.ViewTab>
+            <S.ViewTab $on={view === 'table'} onClick={() => setView('table')}>
+              표
+            </S.ViewTab>
+          </S.ViewTabs>
+        </S.Head>
 
-      {workflow.nodes.length >= 2 && (
-        linking ? (
-          <S.LinkForm>
-            <S.Select value={linking.fromNode || ''}
-                      onChange={(e) => setLinking({ ...linking, fromNode: e.target.value, fromVar: '' })}>
-              <option value="">보내는 노드</option>
-              {workflow.nodes.map(n => <option key={n.id} value={n.id}>{n.alias}</option>)}
-            </S.Select>
-            <S.Select value={linking.fromVar || ''} disabled={!linking.fromNode}
-                      onChange={(e) => setLinking({ ...linking, fromVar: e.target.value })}>
-              <option value="">보내는 값 (결과)</option>
-              {outputsOf(linking.fromNode).map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.name}{v.symbol ? ` (${v.symbol})` : ''}{v.unit ? ` [${v.unit}]` : ''}
-                </option>
-              ))}
-            </S.Select>
-            <span>→</span>
-            <S.Select value={linking.toNode || ''}
-                      onChange={(e) => setLinking({ ...linking, toNode: e.target.value, toVar: '' })}>
-              <option value="">받는 노드</option>
-              {workflow.nodes.map(n => <option key={n.id} value={n.id}>{n.alias}</option>)}
-            </S.Select>
-            <S.Select value={linking.toVar || ''} disabled={!linking.toNode}
-                      onChange={(e) => setLinking({ ...linking, toVar: e.target.value })}>
-              <option value="">받는 입력</option>
-              {inputsOf(linking.toNode)
-                // 이미 연결된 입력은 고를 수 없다. 한 입력에는 하나만 이어진다.
-                .filter(v => !linkedInputs.has(`${linking.toNode}:${v.id}`))
-                .map(v => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}{v.symbol ? ` (${v.symbol})` : ''}{v.unit ? ` [${v.unit}]` : ''}
-                  </option>
+        {error && <S.Error>{error}</S.Error>}
+        {notice && <S.Notice onClick={() => setNotice('')}>{notice}</S.Notice>}
+        {/* 무엇을 채웠고 무엇이 빠졌는지. 조용한 성공보다 시끄러운 성공이 낫다. */}
+        {loadMsg && (
+          <S.Issue $level={loadMsg.warn ? 'warning' : 'info'}
+                   style={{ marginTop: 0, marginBottom: 12, cursor: 'pointer' }}
+                   onClick={() => setLoadMsg(null)}>
+            {loadMsg.text}
+          </S.Issue>
+        )}
+
+        {loadingRecord && (
+          <RecordPicker
+            query={{ workflow_id: workflow.id }}
+            note={<>고른 기록의 <b>입력값만</b> 채웁니다. 연결로 들어오는 칸은 앞 노드가 덮으므로 건너뛰고, <b>되먹임 초기 추정값</b>은 사람이 정하는 값이라 그대로 가져옵니다.</>}
+            onPick={loadInputs}
+            onClose={() => setLoadingRecord(false)}
+          />
+        )}
+
+        <S.Split>
+          {/* --- 왼쪽: 계산 흐름 ------------------------------------------- */}
+          <S.Main>
+            {view === 'canvas' && (
+              workflow.nodes.length === 0 ? (
+                <S.Empty>
+                  <div>아직 비어 있습니다.</div>
+                  {tools}
+                </S.Empty>
+              ) : (
+                <>
+                  <WorkflowCanvas
+                    workflow={workflow}
+                    cardVariables={cardVariables}
+                    run={run}
+                    tools={tools}
+                    stale={calculating}
+                    onConnect={connectOnCanvas}
+                    onInput={setInput}
+                    onRemove={removeNode}
+                    onDisconnect={removeLink}
+                    onMove={moveNode}
+                    onRelayout={persistLayout}
+                  />
+                  <S.CanvasHint>
+                    값을 고치면 <b>바로 다시 계산</b>됩니다. <b>결과</b> 손잡이에서
+                    끌어다 다른 카드의 <b>입력</b> 손잡이에 놓으면 이어지고, 선을
+                    고른 뒤 Delete 를 누르면 끊깁니다. 카드를 빼려면 <b>✕</b>.
+                  </S.CanvasHint>
+                </>
+              )
+            )}
+
+            {view === 'table' && (
+              <S.Scroll>
+                <S.SectionTitle style={{ marginTop: 0 }}>노드</S.SectionTitle>
+                {workflow.nodes.length === 0 && (
+                  <S.Muted>아직 비어 있습니다. 카드를 넣으면 여기에 놓입니다.</S.Muted>
+                )}
+
+                {workflow.nodes.map(node => (
+                  <S.Node key={node.id} $bad={node.card_deleted}>
+                    <S.NodeHead>
+                      <S.NodeName>{node.alias}</S.NodeName>
+                      <S.NodeCard>{node.card_name}</S.NodeCard>
+                      {node.card_deleted && <S.Bad>카드가 휴지통에 있습니다</S.Bad>}
+                      <S.Small onClick={() => removeNode(node)}>빼기</S.Small>
+                    </S.NodeHead>
+
+                    <S.Inputs>
+                      {inputsOf(node.id).length === 0 && (
+                        <S.Muted>이 카드에는 입력이 없습니다.</S.Muted>
+                      )}
+                      {inputsOf(node.id).map(v => {
+                        const link = linkedInputs.get(`${node.id}:${v.id}`)
+                        const stored = (node.inputs || {})[String(v.id)]
+                          ?? (node.inputs || {})[v.id]
+                        return (
+                          <S.InputRow key={v.id}>
+                            <S.VarName>
+                              {v.name}{v.symbol ? ` (${v.symbol})` : ''}
+                              {v.unit ? <S.Unit>{v.unit}</S.Unit> : null}
+                            </S.VarName>
+                            {link && !feedbackIds.has(String(link.id)) ? (
+                              // **연결된 칸은 편집하지 않는다.** 고칠 수 있는데 앞
+                              // 노드 값에 덮여 무시되는 것이 가장 나쁜 실패다.
+                              // 되먹임만 예외다 — 거기 적힌 숫자는 앞 노드가
+                              // 덮는 값이 아니라 고리가 출발하는 값이다.
+                              <S.Linked>
+                                ← {nodeById.get(String(link.from_node_id))?.alias}
+                                .{link.from_label}
+                              </S.Linked>
+                            ) : (
+                              <S.Value
+                                defaultValue={stored ?? ''}
+                                placeholder="값"
+                                onBlur={(e) => {
+                                  const next = e.target.value
+                                  if (String(stored ?? '') !== next) {
+                                    setInput(node, v.id, next)
+                                  }
+                                }}
+                              />
+                            )}
+                          </S.InputRow>
+                        )
+                      })}
+                    </S.Inputs>
+                  </S.Node>
                 ))}
-            </S.Select>
-            <S.Primary onClick={addLink}>잇기</S.Primary>
-            <S.Small onClick={() => setLinking(null)}>취소</S.Small>
-          </S.LinkForm>
-        ) : (
-          <S.Add onClick={() => setLinking({})}>＋ 연결 만들기</S.Add>
-        )
-      )}
-    </S.Wrap>
+
+                {tools}
+
+                <S.SectionTitle>연결</S.SectionTitle>
+                {workflow.links.length === 0 && (
+                  <S.Muted>
+                    아직 연결이 없습니다. 앞 카드의 결과를 뒤 카드의 입력으로 이으면
+                    값이 흐릅니다.
+                  </S.Muted>
+                )}
+
+                {workflow.links.map(link => (
+                  <S.Link key={link.id}>
+                    <span>
+                      <b>{nodeById.get(String(link.from_node_id))?.alias}</b>
+                      .{link.from_label}
+                      {'  →  '}
+                      <b>{nodeById.get(String(link.to_node_id))?.alias}</b>
+                      .{link.to_label}
+                    </span>
+                    <S.Small onClick={() => removeLink(link.id)}>끊기</S.Small>
+                  </S.Link>
+                ))}
+
+                {workflow.nodes.length >= 2 && (
+                  linking ? (
+                    <S.LinkForm>
+                      <S.Select
+                        value={linking.fromNode || ''}
+                        onChange={(e) => setLinking({
+                          ...linking, fromNode: e.target.value, fromVar: '',
+                        })}>
+                        <option value="">보내는 노드</option>
+                        {workflow.nodes.map(n => (
+                          <option key={n.id} value={n.id}>{n.alias}</option>
+                        ))}
+                      </S.Select>
+                      <S.Select
+                        value={linking.fromVar || ''} disabled={!linking.fromNode}
+                        onChange={(e) => setLinking({ ...linking, fromVar: e.target.value })}>
+                        <option value="">보내는 값 (결과)</option>
+                        {outputsOf(linking.fromNode).map(v => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}{v.symbol ? ` (${v.symbol})` : ''}
+                            {v.unit ? ` [${v.unit}]` : ''}
+                          </option>
+                        ))}
+                      </S.Select>
+                      <span>→</span>
+                      <S.Select
+                        value={linking.toNode || ''}
+                        onChange={(e) => setLinking({
+                          ...linking, toNode: e.target.value, toVar: '',
+                        })}>
+                        <option value="">받는 노드</option>
+                        {workflow.nodes.map(n => (
+                          <option key={n.id} value={n.id}>{n.alias}</option>
+                        ))}
+                      </S.Select>
+                      <S.Select
+                        value={linking.toVar || ''} disabled={!linking.toNode}
+                        onChange={(e) => setLinking({ ...linking, toVar: e.target.value })}>
+                        <option value="">받는 입력</option>
+                        {inputsOf(linking.toNode)
+                          // 이미 연결된 입력은 고를 수 없다. 한 입력에는 하나만 이어진다.
+                          .filter(v => !linkedInputs.has(`${linking.toNode}:${v.id}`))
+                          .map(v => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}{v.symbol ? ` (${v.symbol})` : ''}
+                              {v.unit ? ` [${v.unit}]` : ''}
+                            </option>
+                          ))}
+                      </S.Select>
+                      <S.Primary onClick={addLink}>잇기</S.Primary>
+                      <S.Small onClick={() => setLinking(null)}>취소</S.Small>
+                    </S.LinkForm>
+                  ) : (
+                    <S.Add onClick={() => setLinking({})}>＋ 연결 만들기</S.Add>
+                  )
+                )}
+              </S.Scroll>
+            )}
+          </S.Main>
+
+          {/* --- 오른쪽: 검증과 결과 --------------------------------------- */}
+          <S.Side>
+            {/* 검증이 먼저 온다. 카드는 살아 있는 참조라, 그림이 멀쩡해 보여도
+                가리키던 변수가 사라져 있을 수 있다. */}
+            <S.Panel>
+              <S.PanelHead>
+                검증
+                {errors.length > 0 && <S.Bad>오류 {errors.length}</S.Bad>}
+                {warnings.length > 0 && <S.Warn>경고 {warnings.length}</S.Warn>}
+                {issues.length === 0 && <S.Good>문제 없음</S.Good>}
+              </S.PanelHead>
+              {issues.map((issue, i) => (
+                <S.Issue key={i} $level={issue.level}>
+                  {issue.message}
+                </S.Issue>
+              ))}
+            </S.Panel>
+
+            {/* 반복이 없는 워크플로에는 보이지 않는다. 안 쓰는 손잡이를 늘어놓으면
+                쓰는 손잡이가 묻힌다. */}
+            {hasLoop && (
+              <S.Panel>
+                <S.PanelHead>반복 기준</S.PanelHead>
+                <S.Muted style={{ padding: '4px 0 6px' }}>
+                  서로 물린 값을 수렴할 때까지 돌립니다. 안 잡히면 완화계수를
+                  낮춰 보세요 — 보폭이 줄어 튀는 고리가 잡힙니다.
+                </S.Muted>
+                <S.Knob>
+                  허용오차
+                  <input type="number" step="1e-6" min="1e-12" max="0.1"
+                         defaultValue={workflow.iter_tolerance}
+                         key={`tol-${workflow.iter_tolerance}`}
+                         onBlur={(e) => setIteration(
+                           { iter_tolerance: Number(e.target.value) })} />
+                </S.Knob>
+                <S.Knob>
+                  최대 반복
+                  <input type="number" step="10" min="1" max="500"
+                         defaultValue={workflow.iter_max}
+                         key={`max-${workflow.iter_max}`}
+                         onBlur={(e) => setIteration(
+                           { iter_max: Number(e.target.value) })} />
+                </S.Knob>
+                <S.Knob>
+                  완화계수 ω
+                  <input type="number" step="0.1" min="0.01" max="2"
+                         defaultValue={workflow.iter_relaxation}
+                         key={`w-${workflow.iter_relaxation}`}
+                         onBlur={(e) => setIteration(
+                           { iter_relaxation: Number(e.target.value) })} />
+                </S.Knob>
+              </S.Panel>
+            )}
+
+            {workflow.nodes.length > 0 && (
+              <S.Panel>
+                <S.PanelHead>
+                  결과
+                  {calculating && <S.Warn>다시 계산 중…</S.Warn>}
+                </S.PanelHead>
+
+                {errors.length > 0 && (
+                  <S.Muted>검증 오류를 먼저 고쳐야 계산됩니다.</S.Muted>
+                )}
+
+                {run?.nodes && (
+                  <>
+                    {/* 결론만 크게. 노드마다의 숫자는 순서도가 이미 제자리에서
+                        보여 주므로 여기서 되풀이하지 않는다. */}
+                    <S.Finals>
+                      {terminalNodes(workflow).map(node => {
+                        const r = run.nodes[node.id]
+                        const vars = (cardVariables[node.card_id] || [])
+                          .filter(v => v.category === 'output')
+                        return (
+                          <S.Final key={node.id} $bad={r?.status !== STATUS.ok}>
+                            <S.FinalName>{node.alias}</S.FinalName>
+                            {r?.status === STATUS.blocked ? (
+                              <S.Muted>{r.message}</S.Muted>
+                            ) : vars.length === 0 ? (
+                              <S.Muted>결과값이 없는 카드입니다.</S.Muted>
+                            ) : vars.map(v => {
+                              const cell = r?.results?.[v.id]
+                              return (
+                                <S.FinalRow key={v.id}>
+                                  <span>{v.name}{v.symbol ? ` (${v.symbol})` : ''}</span>
+                                  <b>
+                                    {cell?.error ? '—' : fmt(cell?.value)}
+                                    {!cell?.error && v.unit ? ` ${v.unit}` : ''}
+                                  </b>
+                                </S.FinalRow>
+                              )
+                            })}
+                          </S.Final>
+                        )
+                      })}
+                    </S.Finals>
+
+                    {/* 몇 번 돌려 어디까지 좁혀졌는지. 이 줄이 없으면 화면의
+                        숫자가 수렴한 값인지 한 번 계산한 값인지 알 수 없다. */}
+                    {loopRuns.map(({ node, loop }) => (
+                      <S.LoopLine key={node.id}>
+                        <b>↺ {node.alias}</b>
+                        <span>{loop.iterations}회 반복</span>
+                        <span>잔차 {loop.residual?.toExponential(1)}</span>
+                      </S.LoopLine>
+                    ))}
+
+                    {/* 화면에 보이는 숫자를 그대로 남긴다. 화면에 없는 숫자가
+                        기록으로 들어가는 것이 이 기능에서 가장 나쁜 실패다. */}
+                    <S.SaveBar>
+                      <S.Value style={{ flex: 1, minWidth: 130 }}
+                               value={recordTitle}
+                               onChange={(e) => setRecordTitle(e.target.value)}
+                               placeholder="무슨 계산인가요?" />
+                      {/* 낡은 숫자를 기록으로 남기면 안 된다. 그 기록은 어떤
+                          입력의 결과인지 영영 알 수 없어진다. */}
+                      <S.Primary onClick={saveRecord}
+                                 disabled={saving || calculating || !recordTitle.trim()}>
+                        {saving ? '저장 중…' : '기록 저장'}
+                      </S.Primary>
+                    </S.SaveBar>
+                  </>
+                )}
+              </S.Panel>
+            )}
+          </S.Side>
+        </S.Split>
+      </S.Wrap>
+    </S.Page>
   )
 }
 

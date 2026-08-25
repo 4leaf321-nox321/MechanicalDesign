@@ -21,8 +21,8 @@ const Backdrop = styled.div`
 `
 
 const Box = styled.div`
-  background: white;
-  border-radius: 10px;
+  background: hsl(var(--surface));
+  border-radius: var(--radius);
   width: min(420px, 92vw);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   padding: 24px;
@@ -31,20 +31,20 @@ const Box = styled.div`
 const Title = styled.h3`
   margin: 0 0 6px;
   font-size: 1.05rem;
-  color: #1a1a2e;
+  color: hsl(var(--fg));
 `
 
 const Sub = styled.p`
   margin: 0 0 18px;
   font-size: 0.83rem;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
   line-height: 1.55;
 `
 
 const Label = styled.label`
   display: block;
   font-size: 0.78rem;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
   margin-bottom: 5px;
   font-weight: 600;
 `
@@ -52,14 +52,14 @@ const Label = styled.label`
 const Input = styled.input`
   width: 100%;
   padding: 9px 11px;
-  border: 1px solid #d5dae2;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius);
   font-size: 0.9rem;
   box-sizing: border-box;
 
   &:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: hsl(var(--primary));
   }
 `
 
@@ -68,32 +68,32 @@ const Field = styled.div`
 `
 
 const Note = styled.div`
-  background: #f8f9fb;
-  border: 1px solid #eceef2;
-  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 0.83rem;
-  color: #4b5563;
+  color: hsl(var(--fg-muted));
   line-height: 1.6;
   margin-bottom: 16px;
 
   b {
-    color: #1a1a2e;
+    color: hsl(var(--fg));
   }
 `
 
 const Blocked = styled(Note)`
-  background: #fdf3f2;
-  border-color: #f5d9d6;
-  color: #a33a2c;
+  background: hsl(var(--danger-soft));
+  border-color: hsl(var(--danger-border));
+  color: hsl(var(--danger));
 
   b {
-    color: #8f2f23;
+    color: hsl(var(--danger));
   }
 `
 
 const Err = styled.div`
-  color: #c0392b;
+  color: hsl(var(--danger));
   font-size: 0.82rem;
   margin-bottom: 12px;
 `
@@ -106,12 +106,12 @@ const Row = styled.div`
 
 const Btn = styled.button`
   padding: 8px 18px;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.86rem;
   cursor: pointer;
-  border: 1px solid #d5dae2;
-  background: white;
-  color: #4b5563;
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
 
   &:disabled {
     opacity: 0.5;
@@ -121,7 +121,7 @@ const Btn = styled.button`
 
 const Primary = styled(Btn)`
   border-color: transparent;
-  background: ${(p) => (p.$danger ? '#c0392b' : '#1a1a2e')};
+  background: ${(p) => (p.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg))')};
   color: white;
 `
 
