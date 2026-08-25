@@ -12,7 +12,9 @@ from app.extensions import db
 from app.modules.cards.models import Card, Variable
 from app.shared.errors import AppError
 
-from .models import Workflow, WorkflowLink, WorkflowNode
+from .models import (
+    Workflow, WorkflowGroup, WorkflowLink, WorkflowNode,
+)
 
 
 # --- 이름과 주소 -----------------------------------------------------------------
@@ -140,6 +142,86 @@ def set_node_inputs(wf, node_id, values):
     node.inputs = json.dumps(values, ensure_ascii=False)
     db.session.commit()
     return node
+
+
+
+# --- 묶음 -----------------------------------------------------------------------
+
+def _group_of(wf, group_id):
+    group = db.session.get(WorkflowGroup, group_id)
+    if group is None or group.workflow_id != wf.id:
+        raise AppError('MD-WF-0130', '그 묶음을 찾을 수 없습니다.', status=404)
+    return group
+
+
+def _assign(wf, group, node_ids):
+    """이 묶음에 들 노드를 정한다.
+
+    **한 노드는 한 묶음에만 든다.** 다른 묶음에 있던 노드를 넣으면 그쪽에서
+    빠진다 — 겹치는 묶음을 허용하면 상자가 서로를 가로질러 그려져서 그림이
+    오히려 안 읽힌다.
+
+    남의 워크플로 노드를 끌어오려는 요청은 조용히 무시하지 않고 막는다. 무시하면
+    「묶었는데 안 들어갔다」 가 되고, 사람은 화면을 새로 고쳐 봐야 그것을 안다.
+    """
+    if node_ids is None:
+        return
+    if not isinstance(node_ids, (list, tuple)):
+        raise AppError('MD-WF-0131', 'node_ids 는 목록이어야 합니다.')
+
+    wanted = {int(n) for n in node_ids}
+    mine = {n.id for n in wf.nodes}
+    stray = wanted - mine
+    if stray:
+        raise AppError('MD-WF-0132',
+                       f'이 워크플로에 없는 노드가 있습니다: {sorted(stray)}')
+
+    for node in wf.nodes:
+        if node.id in wanted:
+            node.group_id = group.id
+        elif node.group_id == group.id:
+            # 이번 목록에 없으면 이 묶음에서 뺀다.
+            node.group_id = None
+
+
+def create_group(wf, name, color=None, node_ids=None):
+    group = WorkflowGroup(
+        workflow_id=wf.id,
+        name=(name or '').strip() or '묶음',
+        color=(color or '#6c5ce7'),
+        sort_order=(max([g.sort_order for g in wf.groups], default=0) + 1),
+    )
+    db.session.add(group)
+    db.session.flush()          # group.id 가 있어야 노드를 붙일 수 있다
+    _assign(wf, group, node_ids or [])
+    db.session.commit()
+    return group
+
+
+def update_group(wf, group_id, data):
+    group = _group_of(wf, group_id)
+    if 'name' in data:
+        group.name = (data.get('name') or '').strip() or group.name
+    if 'color' in data:
+        group.color = data.get('color') or group.color
+    if 'node_ids' in data:
+        _assign(wf, group, data.get('node_ids'))
+    db.session.commit()
+    return group
+
+
+def remove_group(wf, group_id):
+    """묶음을 푼다. **노드는 남는다.**
+
+    상자를 지우는 것은 「이렇게 보지 않겠다」 는 뜻이다. 노드까지 사라지면
+    화면을 정리하려다 계산을 잃는다.
+    """
+    group = _group_of(wf, group_id)
+    for node in wf.nodes:
+        if node.group_id == group.id:
+            node.group_id = None
+    db.session.delete(group)
+    db.session.commit()
 
 
 # --- 연결 -----------------------------------------------------------------------

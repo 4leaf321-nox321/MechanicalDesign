@@ -324,6 +324,40 @@ def remove_node(workflow_id, node_id):
 
 # --- 연결 -----------------------------------------------------------------------
 
+# --- 묶음 -----------------------------------------------------------------------
+
+@workflows_bp.route('/<int:workflow_id>/groups', methods=['POST'])
+def create_group(workflow_id):
+    actor = current_user()
+    wf = services.get_visible(workflow_id, actor)
+    services.assert_can_edit(wf, actor)
+
+    data = request.get_json() or {}
+    group = services.create_group(wf, data.get('name'), data.get('color'),
+                                  data.get('node_ids'))
+    return jsonify(group.to_dict()), 201
+
+
+@workflows_bp.route('/<int:workflow_id>/groups/<int:group_id>', methods=['PUT'])
+def update_group(workflow_id, group_id):
+    actor = current_user()
+    wf = services.get_visible(workflow_id, actor)
+    services.assert_can_edit(wf, actor)
+
+    group = services.update_group(wf, group_id, request.get_json() or {})
+    return jsonify(group.to_dict())
+
+
+@workflows_bp.route('/<int:workflow_id>/groups/<int:group_id>', methods=['DELETE'])
+def remove_group(workflow_id, group_id):
+    actor = current_user()
+    wf = services.get_visible(workflow_id, actor)
+    services.assert_can_edit(wf, actor)
+
+    services.remove_group(wf, group_id)
+    return jsonify({'message': '묶음을 풀었습니다. 노드는 그대로 있습니다.'})
+
+
 @workflows_bp.route('/<int:workflow_id>/links', methods=['POST'])
 def add_link(workflow_id):
     actor = current_user()

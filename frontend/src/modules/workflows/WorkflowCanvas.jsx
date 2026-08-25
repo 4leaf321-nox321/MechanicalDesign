@@ -29,6 +29,7 @@ import { STATUS, terminalNodes } from '../../shared/utils/workflowEngine'
 import { executionBlocks } from '../../shared/utils/scc'
 import { fmt } from '../../shared/utils/goalSeek'
 import { edgeFlow } from './edgeFlow'
+import { groupBoxes, toAbsolute, toLocal } from './groupBoxes'
 import { useTokens } from '../../shared/theme/chartColors'
 import { autoLayout, needsLayout } from './workflowLayout'
 
@@ -53,6 +54,32 @@ const TONE = {
   [STATUS.blocked]: 'hsl(var(--fg-subtle))',
   [STATUS.failed]: 'hsl(var(--warn))',
 }
+
+/** 묶음 상자. 색은 뜻이 아니라 **구분**이라 사람이 고른 것을 그대로 쓴다. */
+const Box2 = styled.div`
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed ${p => p.$color};
+  border-radius: var(--radius-lg);
+  background: ${p => p.$color}14;
+  /* 상자를 눌러도 노드를 고를 수 있어야 한다. 이름표만 잡힌다. */
+  pointer-events: none;
+`
+
+const GroupName = styled.div`
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  padding: 2px 9px;
+  border-radius: var(--radius-sm);
+  background: ${p => p.$color};
+  color: hsl(var(--solid-fg));
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: all;
+  cursor: grab;
+`
 
 const Frame = styled.div`
   /* 다시 계산하는 동안 보이는 숫자는 이전 것이다. 흐리게 두면 "지금 값의
@@ -402,7 +429,24 @@ function CardNode({ data, selected }) {
   )
 }
 
-const nodeTypes = { card: CardNode }
+/**
+ * 묶음 상자.
+ *
+ * 뒤에 깔리고 클릭을 받지 않는다 — 상자를 눌러 노드를 못 고르면 답답하다.
+ * 잡을 곳은 이름표뿐이라, 상자째 옮기려면 이름을 끈다.
+ */
+function GroupBox({ data }) {
+  return (
+    <Box2 $color={data.color}>
+      <GroupName className="group-grab" $color={data.color}>
+        {data.name}
+      </GroupName>
+    </Box2>
+  )
+}
+
+
+const nodeTypes = { card: CardNode, groupBox: GroupBox }
 
 /** 선 위에는 기호만. "전달토크 (T)" 를 통째로 얹으면 선이 글자에 묻힌다. */
 function shortLabel(label) {
@@ -412,7 +456,7 @@ function shortLabel(label) {
 
 function WorkflowCanvas({
   workflow, cardVariables, run, tools, stale,
-  onConnect, onDisconnect, onMove, onInput, onRemove, onRelayout,
+  onConnect, onDisconnect, onMove, onInput, onRemove, onRelayout, onSelect,
 }) {
   // 배경 점과 미니맵은 SVG 속성으로 색을 받는다 — var() 가 안 풀린다.
   const paint = useTokens(PAINTED)
@@ -470,7 +514,31 @@ function WorkflowCanvas({
     return autoLayout(workflow.nodes, workflow.links)
   }, [workflow.nodes, workflow.links])
 
-  const toNodes = useCallback(() => (workflow.nodes || []).map(node => {
+  /**
+   * 묶음 상자. 멤버가 차지한 자리에서 계산한다 — 상자 좌표를 따로 저장하면
+   * 노드를 옮길 때마다 둘이 어긋나고 어느 쪽이 맞는지 정할 수 없다.
+   */
+  const boxed = useMemo(
+    () => groupBoxes(workflow.groups, workflow.nodes, laidOut || {}),
+    [workflow.groups, workflow.nodes, laidOut])
+
+  const toNodes = useCallback(() => {
+    // 상자가 **먼저** 와야 한다. reactflow 는 부모를 자식보다 앞에서 찾는다.
+    const boxes = boxed.boxes.map(box => ({
+      id: `group-${box.id}`,
+      type: 'groupBox',
+      position: { x: box.x, y: box.y },
+      style: { width: box.width, height: box.height },
+      data: { name: box.name, color: box.color, nodeIds: box.nodeIds },
+      draggable: true,
+      selectable: false,
+      deletable: false,
+      zIndex: 0,
+      // 이름표만 잡힌다. 상자 아무 데나 끌리면 노드를 고를 수가 없다.
+      dragHandle: '.group-grab',
+    }))
+
+    const cards = (workflow.nodes || []).map(node => {
     const vars = cardVariables[node.card_id] || []
     const at = laidOut?.[node.id]
     return {
@@ -480,7 +548,8 @@ function WorkflowCanvas({
       // 함께 사라지는 일이라 확인을 거쳐야 한다. 막는 자리는 **노드마다**다.
       // ReactFlow 에 `nodesDeletable` 같은 prop 은 없다.
       deletable: false,
-      position: at || { x: node.layout_x || 0, y: node.layout_y || 0 },
+      position: toLocal(at || { x: node.layout_x || 0, y: node.layout_y || 0 },
+                        boxed.originOf[node.id]),
       data: {
         alias: node.alias,
         cardName: node.card_name,
@@ -496,8 +565,10 @@ function WorkflowCanvas({
         onRemove: () => onRemove(node),
       },
     }
-  }), [workflow.nodes, cardVariables, laidOut, linksByTarget, run, terminals,
-       loops, onInput, onRemove])
+    })
+    return [...boxes, ...cards]
+  }, [workflow.nodes, cardVariables, laidOut, linksByTarget, run, terminals,
+      loops, boxed, onInput, onRemove])
 
   const toEdges = useCallback(() => (workflow.links || []).map(link => {
     // 선 위에 **흐르는 값**을 적는다. 순서도가 표를 가장 확실하게 이기는 곳이다 —
@@ -582,11 +653,40 @@ function WorkflowCanvas({
         edges={painted}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        // 무엇을 골랐는지 밖에서 알아야 「묶기」 를 띄울 수 있다.
+        onSelectionChange={({ nodes: picked }) => onSelect?.(
+          (picked || []).filter(n => n.type === 'card').map(n => Number(n.id)))}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         // 옮긴 자리는 손을 뗄 때 한 번만 저장한다. 끄는 동안 매 프레임 보내면
         // 요청이 수백 개가 된다.
-        onNodeDragStop={(_, node) => onMove(Number(node.id), node.position)}
+        // 묶인 노드는 상자 기준 좌표가 오므로 절대값으로 되돌려 저장한다.
+        // 상자를 끌면 자식이 함께 오는데, 자식의 상대 좌표는 그대로이므로
+        // **상자에 속한 것들을 모두** 다시 적어야 한다.
+        onNodeDragStop={(_, node, dragged) => {
+          const moved = dragged?.length ? dragged : [node]
+          for (const one of moved) {
+            if (one.type === 'groupBox') {
+              const was = boxed.boxes.find(b => `group-${b.id}` === one.id)
+              if (!was) continue
+              const shift = {
+                x: one.position.x - was.x,
+                y: one.position.y - was.y,
+              }
+              for (const id of one.data.nodeIds) {
+                const src = workflow.nodes.find(n => n.id === id)
+                if (!src) continue
+                onMove(id, {
+                  x: (src.layout_x || 0) + shift.x,
+                  y: (src.layout_y || 0) + shift.y,
+                })
+              }
+              continue
+            }
+            onMove(Number(one.id),
+                   toAbsolute(one.position, boxed.originOf[Number(one.id)]))
+          }
+        }}
         // 선을 골라 Delete 를 누르면 끊는다.
         onEdgesDelete={(removed) => removed.forEach(e => onDisconnect(Number(e.id)))}
         // Windows 는 Delete, Mac 은 Backspace. 하나만 받으면 한쪽 사람은

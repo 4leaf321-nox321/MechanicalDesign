@@ -52,6 +52,8 @@ function WorkflowEditorPage() {
   // 다른 하나는 어떤 값으로 채울지를 고른다.
   const [loadingRecord, setLoadingRecord] = useState(false)
   const [loadMsg, setLoadMsg] = useState(null)
+  // 순서도에서 지금 고른 노드들. 묶을 것이 있는지가 여기서 정해진다.
+  const [picked, setPicked] = useState([])
 
   const load = useCallback(async () => {
     const route = decodeURIComponent(location.pathname)
@@ -389,6 +391,43 @@ function WorkflowEditorPage() {
     setLoadMsg({ ...said, text: `'${record.title}' — ${said.text}` })
   }
 
+  /**
+   * 고른 노드를 한 상자로 묶는다.
+   *
+   * **계산에는 아무 영향이 없다.** 실행 순서는 배선이 정하고 묶음은 사람이
+   * 보기 좋으라고 두는 것이다. 묶었더니 답이 달라진다면 그림이 계산을
+   * 건드린 것이고, 그게 이 기능에서 가장 나쁜 실패다.
+   */
+  const groupPicked = async () => {
+    const name = await prompt({
+      title: `카드 ${picked.length}장을 묶습니다`,
+      body: '순서도에서 한 상자로 두릅니다.'
+        + '\n계산에는 아무 영향이 없습니다 — 실행 순서는 배선이 정합니다.',
+      placeholder: '예: 관로 계열',
+      initial: '계열',
+      confirmLabel: '묶기',
+    })
+    if (name === null) return
+    await call(`/workflows/${workflow.id}/groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, node_ids: picked }),
+    })
+    setPicked([])
+  }
+
+  /** 묶음을 푼다. **노드는 남는다** — 상자만 걷어내는 일이다. */
+  const ungroup = async (group) => {
+    const ok = await confirm({
+      title: `'${group.name}' 묶음을 풉니다`,
+      body: '상자만 사라집니다. 카드와 연결은 그대로 있습니다.',
+      confirmLabel: '풀기',
+    })
+    if (!ok) return
+    await call(`/workflows/${workflow.id}/groups/${group.id}`,
+               { method: 'DELETE' })
+  }
+
   /** 반복 기준. 서버가 범위를 막으므로 여기서는 보내고 답을 그대로 보여 준다. */
   const setIteration = async (patch) => {
     await call(`/workflows/${workflow.id}`, {
@@ -454,6 +493,20 @@ function WorkflowEditorPage() {
       <S.ToolButton onClick={() => setPicking(!picking)}>
         ＋ 카드 넣기
       </S.ToolButton>
+      {/* 고른 것이 둘 이상일 때만 뜬다. 하나짜리 상자는 그릴 값이 없다. */}
+      {picked.length >= 2 && (
+        <S.ToolButton onClick={groupPicked}>
+          ▢ {picked.length}개 묶기
+        </S.ToolButton>
+      )}
+      {/* 이미 있는 묶음은 여기서 푼다. 상자를 눌러 풀게 하면, 상자를 잘못
+          눌렀을 때 묶음이 사라진다. */}
+      {(workflow.groups || []).map(g => (
+        <S.ToolButton key={g.id} onClick={() => ungroup(g)}
+                      title="이 묶음을 풉니다 (카드는 남습니다)">
+          ▢ {g.name} 풀기
+        </S.ToolButton>
+      ))}
       {picking && (
         <S.Picker style={{ width: 260, marginTop: 0 }}>
           <S.PickerHead>어느 카드를 넣을까요</S.PickerHead>
@@ -555,6 +608,7 @@ function WorkflowEditorPage() {
                     onDisconnect={removeLink}
                     onMove={moveNode}
                     onRelayout={persistLayout}
+                    onSelect={setPicked}
                   />
                   <S.CanvasHint>
                     값을 고치면 <b>바로 다시 계산</b>됩니다. <b>결과</b> 손잡이에서

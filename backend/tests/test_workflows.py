@@ -24,7 +24,9 @@ from app.modules.accounts.models import User
 from app.modules.auth import security, tokens
 from app.modules.cards.models import Card, Variable
 from app.modules.orgs import services as org_services
-from app.modules.workflows.models import Workflow, WorkflowLink, WorkflowNode
+from app.modules.workflows.models import (
+    Workflow, WorkflowGroup, WorkflowLink, WorkflowNode,
+)
 
 
 @pytest.fixture
@@ -644,6 +646,106 @@ def _wired(client, head, chain):
     _link(client, head, wf['id'], n1, chain['load_vars']['F'],
           n2, chain['stress_vars']['Fin'])
     return wf, n1, n2
+
+
+# --- 묶음 -----------------------------------------------------------------------
+
+def _group(client, head, wf_id, name, node_ids, color=None):
+    return client.post(f'/api/workflows/{wf_id}/groups', headers=head,
+                       json={'name': name, 'node_ids': node_ids,
+                             **({'color': color} if color else {})})
+
+
+def test_a_group_boxes_nodes_without_touching_the_wiring(app, client, chain):
+    """**묶음은 계산에 아무 영향이 없다.**
+
+    실행 순서는 배선이 정하고 묶음은 사람이 보기 좋으라고 두는 것이다. 둘을
+    섞으면 그림을 바꿨을 뿐인데 답이 달라지는 일이 생긴다.
+    """
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+
+    r = _group(client, head, wf['id'], '앞단', [n1['id']])
+    assert r.status_code == 201
+    assert r.get_json()['node_ids'] == [n1['id']]
+
+    full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    assert len(full['links']) == 1              # 배선은 그대로
+    assert len(full['groups']) == 1
+    grouped = next(n for n in full['nodes'] if n['id'] == n1['id'])
+    loose = next(n for n in full['nodes'] if n['id'] == n2['id'])
+    assert grouped['group_id'] == r.get_json()['id']
+    assert loose['group_id'] is None
+
+
+def test_a_node_belongs_to_one_group_only(app, client, chain):
+    """겹치는 묶음을 허용하면 상자가 서로를 가로질러 그림이 안 읽힌다."""
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+
+    first = _group(client, head, wf['id'], '앞단', [n1['id']]).get_json()
+    second = _group(client, head, wf['id'], '뒷단', [n1['id'], n2['id']]).get_json()
+
+    full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    boxes = {g['id']: g['node_ids'] for g in full['groups']}
+    assert boxes[first['id']] == []                       # 먼저 것에서 빠졌다
+    assert sorted(boxes[second['id']]) == sorted([n1['id'], n2['id']])
+
+
+def test_ungrouping_keeps_the_nodes(app, client, chain):
+    """상자를 지우는 것은 「이렇게 보지 않겠다」 는 뜻이지 노드를 버리는 게 아니다."""
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+    group = _group(client, head, wf['id'], '앞단', [n1['id'], n2['id']]).get_json()
+
+    r = client.delete(f"/api/workflows/{wf['id']}/groups/{group['id']}",
+                      headers=head)
+    assert r.status_code == 200
+
+    full = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
+    assert full['groups'] == []
+    assert len(full['nodes']) == 2                        # 노드는 남았다
+    assert len(full['links']) == 1                        # 배선도
+    assert all(n['group_id'] is None for n in full['nodes'])
+
+
+def test_a_group_cannot_take_a_node_from_another_workflow(app, client, chain):
+    """조용히 무시하면 「묶었는데 안 들어갔다」 가 되고, 화면을 새로 고쳐야 안다."""
+    head = chain['head']
+    wf, n1, _ = _wired(client, head, chain)
+    other = client.post('/api/workflows', json={'name': '다른 것'},
+                        headers=head).get_json()
+    outsider = _node(client, head, other['id'], chain['load_id'])
+
+    r = _group(client, head, wf['id'], '섞기', [n1['id'], outsider['id']])
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0132'
+
+
+def test_renaming_a_group_keeps_its_members(app, client, chain):
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+    group = _group(client, head, wf['id'], '앞단', [n1['id']]).get_json()
+
+    r = client.put(f"/api/workflows/{wf['id']}/groups/{group['id']}",
+                   headers=head, json={'name': '관로 계열', 'color': '#e74c3c'})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['name'] == '관로 계열'
+    assert body['color'] == '#e74c3c'
+    assert body['node_ids'] == [n1['id']]
+
+
+def test_deleting_the_workflow_takes_its_groups(app, client, chain):
+    head = chain['head']
+    wf, n1, _ = _wired(client, head, chain)
+    _group(client, head, wf['id'], '앞단', [n1['id']])
+
+    client.delete(f"/api/workflows/{wf['id']}", headers=head)
+    client.delete(f"/api/workflows/{wf['id']}/permanent", headers=head)
+
+    with app.app_context():
+        assert WorkflowGroup.query.count() == 0
 
 
 def test_a_workflow_run_can_be_recorded(app, client, chain):

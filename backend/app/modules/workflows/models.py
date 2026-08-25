@@ -80,6 +80,9 @@ class Workflow(db.Model):
                             order_by='WorkflowNode.sort_order')
     links = db.relationship('WorkflowLink', cascade='all, delete-orphan',
                             back_populates='workflow', lazy='selectin')
+    groups = db.relationship('WorkflowGroup', cascade='all, delete-orphan',
+                             back_populates='workflow', lazy='selectin',
+                             order_by='WorkflowGroup.sort_order')
     mounts = db.relationship('WorkflowMount', cascade='all, delete-orphan',
                              backref='workflow', lazy='selectin')
 
@@ -139,7 +142,47 @@ class Workflow(db.Model):
         if full:
             body['nodes'] = [n.to_dict() for n in self.nodes]
             body['links'] = [l.to_dict() for l in self.links]
+            body['groups'] = [g.to_dict() for g in self.groups]
         return body
+
+
+class WorkflowGroup(db.Model):
+    """노드 묶음 — 순서도에서 한 상자로 두르는 것.
+
+    **계산에는 아무 영향이 없다.** 실행 순서는 배선이 정하고(강결합요소), 묶음은
+    사람이 보기 좋으라고 두는 것이다. 둘을 섞으면 그림을 바꿨을 뿐인데 답이
+    달라지는 일이 생기고, 그것이 이 기능에서 가장 나쁜 실패다.
+
+    그래서 여기에는 이름과 색만 있다. 무엇이 이 묶음에 드는지는 노드 쪽
+    `group_id` 가 안다 — 한 노드는 한 묶음에만 든다. 겹치는 묶음을 허용하면
+    상자가 서로를 가로질러 그려져서, 그림이 오히려 안 읽힌다.
+    """
+
+    __tablename__ = 'workflow_groups'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_id = db.Column(db.Integer, db.ForeignKey('workflows.id', ondelete='CASCADE'),
+                            nullable=False, index=True)
+    workflow = db.relationship('Workflow', back_populates='groups')
+
+    name = db.Column(db.String(100), nullable=False, default='')
+    #: 상자 색. 뜻이 아니라 **구분**이라 사람이 고른다 — 계열이 셋이면 셋이 서로
+    #: 달라야 하고, 무엇이 위험한지는 노드가 따로 말한다.
+    color = db.Column(db.String(7), nullable=False, default='#6c5ce7')
+    sort_order = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    nodes = db.relationship('WorkflowNode', backref='group', lazy='selectin')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'workflow_id': self.workflow_id,
+            'name': self.name or '',
+            'color': self.color,
+            'sort_order': self.sort_order,
+            'node_ids': [n.id for n in self.nodes],
+        }
 
 
 class WorkflowMount(db.Model):
@@ -178,6 +221,13 @@ class WorkflowNode(db.Model):
     #: 이 자리의 이름. '상부 볼트' 처럼 같은 카드를 두 번 쓸 때 구분한다.
     alias = db.Column(db.String(100), nullable=False, default='')
 
+    #: 어느 묶음에 드는가. **`SET NULL` 이다** — 묶음을 지우는 것은 「이렇게
+    #: 보지 않겠다」 는 뜻이지 노드를 버리겠다는 뜻이 아니다. `CASCADE` 로
+    #: 두면 상자를 지웠을 뿐인데 계산이 사라진다.
+    group_id = db.Column(db.Integer,
+                         db.ForeignKey('workflow_groups.id', ondelete='SET NULL'),
+                         nullable=True, index=True)
+
     #: 순서도 GUI 의 좌표. 지금은 표로 편집하지만 자리를 미리 만들어 둔다 —
     #: 나중에 캔버스를 얹을 때 **데이터 모델을 안 바꾸려는** 것이다.
     layout_x = db.Column(db.Integer, nullable=False, default=0, server_default='0')
@@ -209,6 +259,7 @@ class WorkflowNode(db.Model):
             # 카드가 휴지통에 있으면 이 노드는 돌지 않는다. 검증이 읽는다.
             'card_deleted': bool(self.card and self.card.deleted_at),
             'alias': self.alias or '',
+            'group_id': self.group_id,
             'layout_x': self.layout_x,
             'layout_y': self.layout_y,
             'inputs': self.input_values(),
