@@ -155,6 +155,23 @@ def update_workflow(workflow_id):
     return jsonify(wf.to_dict())
 
 
+@workflows_bp.route('/<int:workflow_id>/duplicate', methods=['POST'])
+def duplicate_workflow(workflow_id):
+    """사본은 **만든 사람의 개인 공간에 초안으로** 떨어진다.
+
+    남의 워크플로도 볼 수 있으면 복제할 수 있다 — 고치는 것이 아니라
+    자기 것을 새로 만드는 일이라 편집 권한을 묻지 않는다.
+    """
+    actor = current_user()
+    wf = services.get_visible(workflow_id, actor)
+    home = org_services.ensure_personal_org(actor)
+    copy = services.duplicate_workflow(wf, actor, home.slug)
+    return jsonify({
+        **copy.to_dict(),
+        'message': f"'{copy.name}' 으로 복제했습니다.",
+    }), 201
+
+
 @workflows_bp.route('/<int:workflow_id>', methods=['DELETE'])
 def delete_workflow(workflow_id):
     """휴지통으로. 카드와 같다."""

@@ -809,6 +809,29 @@ function MainPage() {
     setNotice(`${body.message} 「내 카드」에 초안으로 놓였습니다.`)
   }
 
+  /**
+   * 워크플로를 복제한다. 카드 복제와 **같은 자리로** 떨어진다 — 내 개인
+   * 공간의 초안이다.
+   *
+   * 카드는 함께 복제하지 않는다. 노드는 카드를 가리키는 자리이고 카드는
+   * 살아 있는 참조라, 함께 복제하면 원본 카드를 고쳐도 사본이 안 따라온다.
+   */
+  const handleDuplicateWorkflow = async (wf) => {
+    const res = await apiFetch(`/workflows/${wf.id}/duplicate`,
+                               { method: 'POST' })
+    if (!res.ok) {
+      setOrgError(await errorFrom(res))
+      return
+    }
+    const body = await res.json()
+    await refreshTree()
+    const target = personal ? personal.slug : selected
+    goToOrg(target)
+    fetchWorkflows(target, '')
+    setOrgError('')
+    setNotice(`${body.message} 「내 공간」에 초안으로 놓였습니다.`)
+  }
+
   // --- 워크플로 -----------------------------------------------------------
 
   const [wfForm, setWfForm] = useState(null)
@@ -1002,6 +1025,7 @@ function MainPage() {
             onOpen={(wf) => navigate(wf.route)}
             onAdd={() => setWfForm({ mode: 'create' })}
             onDelete={handleDeleteWorkflow}
+            onDuplicate={handleDuplicateWorkflow}
             onRestore={handleRestoreWorkflow}
             onPurge={handlePurgeWorkflow}
           />

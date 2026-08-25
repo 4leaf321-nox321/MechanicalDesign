@@ -60,6 +60,112 @@ def create_workflow(name, actor, home_org_slug, description=''):
     return wf
 
 
+def _free_name(base):
+    """'브래킷 검토' → '브래킷 검토 사본', 이미 있으면 '사본 2'.
+
+    지운 것까지 함께 본다. 휴지통에 있는 이름을 다시 쓰면, 그것을 되살리는
+    순간 같은 이름이 둘이 된다.
+    """
+    taken = {n for (n,) in db.session.query(Workflow.name).all()}
+    candidate = f'{base} 사본'
+    n = 2
+    while candidate in taken:
+        candidate = f'{base} 사본 {n}'
+        n += 1
+    return candidate
+
+
+def duplicate_workflow(source, actor, home_org_slug):
+    """워크플로를 통째로 복제한다. 사본은 만든 사람의 개인 공간에 초안으로.
+
+    **무엇을 가져오고 무엇을 두고 오는가**가 이 함수의 전부다.
+
+        가져온다   노드(별칭·좌표·입력값), 배선, 묶음, 반복 기준, 설명·색
+        두고 온다  게시(조직), 계산 기록, 게시 시각·게시자
+
+    두고 오는 것들의 공통점은 **「이 워크플로가 검토를 거쳤다」 는 흔적**이다.
+    사본은 아직 아무도 보지 않았으므로 물려받으면 안 된다 — 카드 복제와 같은
+    판단이다.
+
+    카드는 **복제하지 않는다.** 노드는 카드를 가리키는 자리이고, 카드는 살아
+    있는 참조다. 함께 복제하면 원본 카드를 고쳐도 사본 워크플로가 안 따라오고,
+    그 순간 「카드 하나를 고치면 그것을 쓰는 곳이 전부 따라온다」 는 이 시스템의
+    약속이 깨진다.
+    """
+    copy = Workflow(
+        name=_free_name(source.name),
+        description=source.description,
+        route=free_route(source.name),
+        color=source.color,
+        sort_order=(db.session.query(db.func.max(Workflow.sort_order)).scalar() or 0) + 1,
+        created_by_id=actor.id,
+        home_org_slug=home_org_slug,
+        status='draft',
+        iter_tolerance=source.iter_tolerance,
+        iter_max=source.iter_max,
+        iter_relaxation=source.iter_relaxation,
+    )
+    db.session.add(copy)
+    db.session.flush()          # copy.id 가 있어야 노드를 붙일 수 있다
+
+    # 노드 id 가 바뀌므로 배선을 다시 이으려면 옛 id → 새 id 를 들고 있어야 한다.
+    node_map = {}
+    for node in sorted(source.nodes, key=lambda n: (n.sort_order, n.id)):
+        made = WorkflowNode(
+            workflow_id=copy.id,
+            card_id=node.card_id,
+            # 하위 워크플로도 **살아 있는 참조다.** 카드와 같은 이유로 함께
+            # 복제하지 않는다 — 안쪽을 고치면 사본도 따라와야 한다.
+            sub_workflow_id=node.sub_workflow_id,
+            alias=node.alias,
+            layout_x=node.layout_x,
+            layout_y=node.layout_y,
+            inputs=node.inputs,
+            sort_order=node.sort_order,
+        )
+        db.session.add(made)
+        db.session.flush()
+        node_map[node.id] = made.id
+
+    for link in source.links:
+        # 노드를 못 찾는 배선은 원본이 이미 깨진 것이다. 조용히 빠뜨리지 않고
+        # 건너뛰되, 사본에 반쯤 이어진 선을 만들지는 않는다.
+        if link.from_node_id not in node_map or link.to_node_id not in node_map:
+            continue
+        # 안쪽 자리는 **바꾸지 않는다.** 하위 워크플로를 복제하지 않았으므로
+        # 그 안의 노드 id 는 그대로다. 사본의 노드 id 로 바꾸면 없는 자리를
+        # 가리키게 된다.
+        db.session.add(WorkflowLink(
+            workflow_id=copy.id,
+            from_node_id=node_map[link.from_node_id],
+            from_inner_node_id=(node_map.get(link.from_inner_node_id)
+                                or link.from_inner_node_id),
+            from_variable_id=link.from_variable_id,
+            from_label=link.from_label,
+            to_node_id=node_map[link.to_node_id],
+            to_inner_node_id=(node_map.get(link.to_inner_node_id)
+                              or link.to_inner_node_id),
+            to_variable_id=link.to_variable_id,
+            to_label=link.to_label,
+        ))
+
+    # 묶음도 가져온다. **그림이 곧 그 워크플로의 일부다** — 상자를 잃으면 사본은
+    # 원본과 같은 계산을 하면서도 다르게 생긴 물건이 되고, 「복제해서 조금
+    # 고친다」 는 쓰임새가 첫걸음부터 어긋난다.
+    for group in source.groups:
+        made = WorkflowGroup(workflow_id=copy.id, name=group.name,
+                             color=group.color, sort_order=group.sort_order)
+        db.session.add(made)
+        db.session.flush()
+        for node in group.nodes:
+            # 못 옮겨 온 노드는 건너뛴다. 위에서 배선을 다룬 것과 같은 이유다.
+            if node.id in node_map:
+                db.session.get(WorkflowNode, node_map[node.id]).group_id = made.id
+
+    db.session.commit()
+    return copy
+
+
 def get_visible(workflow_id, actor):
     wf = db.session.get(Workflow, workflow_id)
     if wf is None or not wf.is_visible_to(actor):

@@ -907,6 +907,119 @@ def test_deleting_the_workflow_takes_its_groups(app, client, chain):
         assert WorkflowGroup.query.count() == 0
 
 
+def test_duplicate_copies_the_wiring(app, client, chain):
+    """배선까지 따라와야 복제가 뜻이 있다.
+
+    노드 id 가 새로 매겨지므로 선을 그대로 베끼면 없는 자리를 가리킨다. 옛
+    id → 새 id 를 들고 다시 이어야 한다.
+    """
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+
+    r = client.post(f"/api/workflows/{wf['id']}/duplicate", headers=head)
+    assert r.status_code == 201
+    copy = r.get_json()
+    assert copy['name'] == '브래킷 검토 사본'
+
+    full = client.get(f"/api/workflows/{copy['id']}", headers=head).get_json()
+    assert len(full['nodes']) == 2
+    assert len(full['links']) == 1
+
+    # **사본 안에서** 이어져 있어야 한다. 원본 노드를 가리키면 두 워크플로가
+    # 한 배선을 나눠 갖게 되고, 한쪽을 고치면 다른 쪽이 조용히 바뀐다.
+    ids = {n['id'] for n in full['nodes']}
+    link = full['links'][0]
+    assert link['from_node_id'] in ids
+    assert link['to_node_id'] in ids
+    assert link['from_node_id'] not in {n1['id'], n2['id']}
+
+
+def test_duplicate_keeps_values_and_leaves_the_review_behind(app, client, chain):
+    """가져오는 것과 두고 오는 것.
+
+    두고 오는 것들의 공통점은 「이 워크플로가 검토를 거쳤다」 는 흔적이다.
+    사본은 아직 아무도 안 봤으므로 물려받으면 안 된다.
+    """
+    head = chain['head']
+    wf, n1, _ = _wired(client, head, chain)
+
+    client.put(f"/api/workflows/{wf['id']}/nodes/{n1['id']}", headers=head,
+               json={'inputs': {str(chain['load_vars']['m']): 50}})
+    client.put(f"/api/workflows/{wf['id']}", headers=head,
+               json={'iter_max': 120, 'iter_relaxation': 0.4})
+    client.post(f"/api/workflows/{wf['id']}/publish", headers=head)
+
+    copy = client.post(f"/api/workflows/{wf['id']}/duplicate",
+                       headers=head).get_json()
+
+    # 가져온다 — 입력값과 반복 기준
+    full = client.get(f"/api/workflows/{copy['id']}", headers=head).get_json()
+    kept = next(n for n in full['nodes'] if n['alias'] == '하중계산')
+    assert kept['inputs'] == {str(chain['load_vars']['m']): 50}
+    assert full['iter_max'] == 120
+    assert full['iter_relaxation'] == 0.4
+
+    # 두고 온다 — 게시 상태
+    assert full['status'] == 'draft'
+    assert full['published_at'] is None
+    assert full['mounted_orgs'] == []
+
+
+def test_duplicate_points_at_the_same_cards(app, client, chain):
+    """**카드는 복제하지 않는다.**
+
+    노드는 카드를 가리키는 자리이고 카드는 살아 있는 참조다. 함께 복제하면
+    원본 카드를 고쳐도 사본이 안 따라오고, 그 순간 「하나를 고치면 그것을 쓰는
+    곳이 전부 따라온다」 는 약속이 깨진다.
+    """
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+
+    copy = client.post(f"/api/workflows/{wf['id']}/duplicate",
+                       headers=head).get_json()
+    full = client.get(f"/api/workflows/{copy['id']}", headers=head).get_json()
+
+    assert {n['card_id'] for n in full['nodes']} == {chain['load_id'],
+                                                    chain['stress_id']}
+
+
+def test_duplicate_brings_the_boxes_along(app, client, chain):
+    """**그림도 그 워크플로의 일부다.**
+
+    묶음을 두고 오면 사본은 원본과 같은 계산을 하면서 다르게 생긴 물건이 되고,
+    「복제해서 조금 고친다」 는 쓰임새가 첫걸음부터 어긋난다.
+    """
+    head = chain['head']
+    wf, n1, n2 = _wired(client, head, chain)
+    _group(client, head, wf['id'], '앞단', [n1['id']], color='#e17055')
+
+    copy = client.post(f"/api/workflows/{wf['id']}/duplicate",
+                       headers=head).get_json()
+    full = client.get(f"/api/workflows/{copy['id']}", headers=head).get_json()
+
+    assert [g['name'] for g in full['groups']] == ['앞단']
+    assert full['groups'][0]['color'] == '#e17055'
+
+    # 상자가 **사본의** 노드를 가리켜야 한다. 원본 노드 id 를 그대로 베끼면
+    # 두 워크플로가 한 노드를 두고 다투게 된다.
+    same = next(n for n in full['nodes'] if n['alias'] == n1['alias'])
+    assert full['groups'][0]['node_ids'] == [same['id']]
+    assert n1['id'] not in full['groups'][0]['node_ids']
+
+
+def test_duplicating_twice_does_not_collide(app, client, chain):
+    head = chain['head']
+    wf, _, _ = _wired(client, head, chain)
+
+    first = client.post(f"/api/workflows/{wf['id']}/duplicate",
+                        headers=head).get_json()
+    second = client.post(f"/api/workflows/{wf['id']}/duplicate",
+                         headers=head).get_json()
+
+    assert first['name'] != second['name']
+    assert first['route'] != second['route']
+
+
 def test_a_workflow_run_can_be_recorded(app, client, chain):
     """돌릴 수는 있는데 남길 수 없으면 반쪽이다."""
     head = chain['head']

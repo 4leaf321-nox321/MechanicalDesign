@@ -72,7 +72,7 @@ const Item = styled.div`
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.11);
   }
 
-  &:hover .wf-delete {
+  &:hover .wf-corner {
     opacity: 1;
   }
 `
@@ -122,23 +122,33 @@ const OrgChip = styled.span`
   color: hsl(var(--accent));
 `
 
-const DeleteBtn = styled.button`
+/** 카드 오른쪽 위 단추 묶음. 마우스를 얹어야 보인다 — 늘 보이면 목록이 시끄럽다. */
+const Corner = styled.div`
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: hsl(var(--border-strong));
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
   opacity: 0;
-  transition: all 0.2s;
+  transition: opacity 120ms;
+`
+
+const CornerBtn = styled.button`
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: hsl(var(--fg-subtle));
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
 
   &:hover {
-    background: hsl(var(--danger-soft));
-    color: hsl(var(--danger));
+    background: hsl(var(--surface-2));
+    color: ${p => (p.$danger ? 'hsl(var(--danger))' : 'hsl(var(--fg))')};
   }
 `
 
@@ -170,7 +180,7 @@ const Empty = styled.div`
 
 function WorkflowSection({
   workflows, isTrashView, query, canAdd,
-  onOpen, onAdd, onDelete, onRestore, onPurge,
+  onOpen, onAdd, onDelete, onDuplicate, onRestore, onPurge,
 }) {
   const [open, setOpen] = useState(true)
 
@@ -211,11 +221,21 @@ function WorkflowSection({
                 $draft={wf.status === 'draft'}
                 onClick={() => onOpen(wf)}
               >
-                {!isTrashView && canAdd && (
-                  <DeleteBtn className="wf-delete"
-                             onClick={(e) => { e.stopPropagation(); onDelete(wf) }}>
-                    ✕
-                  </DeleteBtn>
+                {!isTrashView && (
+                  <Corner className="wf-corner">
+                    {/* 복제는 **남의 것도** 할 수 있다. 고치는 게 아니라
+                        자기 것을 새로 만드는 일이라 canAdd 를 안 본다. */}
+                    <CornerBtn title="복제"
+                               onClick={(e) => { e.stopPropagation(); onDuplicate(wf) }}>
+                      ⧉
+                    </CornerBtn>
+                    {canAdd && (
+                      <CornerBtn $danger title="휴지통으로"
+                                 onClick={(e) => { e.stopPropagation(); onDelete(wf) }}>
+                        ✕
+                      </CornerBtn>
+                    )}
+                  </Corner>
                 )}
 
                 {(wf.status === 'draft' || (query && wf.match?.length)) && (
