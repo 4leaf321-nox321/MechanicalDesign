@@ -284,6 +284,8 @@ function ModulePlaceholder({ onGoHome }) {
   const [card, setCard] = useState(null)
   const [variables, setVariables] = useState([])
   const [containers, setContainers] = useState([])
+  // 도해 — 올린 그림이 아니라 값으로 그리는 형상. 이미지와 따로 둔다.
+  const [figures, setFigures] = useState([])
   const [images, setImages] = useState([])
   const [inputValues, setInputValues] = useState({})
   const [showSettings, setShowSettings] = useState(false)
@@ -332,10 +334,11 @@ function ModulePlaceholder({ onGoHome }) {
   const fetchData = useCallback(async () => {
     if (!card) return
     try {
-      const [varsRes, ctnsRes, imgsRes] = await Promise.all([
+      const [varsRes, ctnsRes, imgsRes, figsRes] = await Promise.all([
         apiFetch(`/cards/${card.id}/variables`),
         apiFetch(`/cards/${card.id}/containers`),
         apiFetch(`/cards/${card.id}/images`),
+        apiFetch(`/cards/${card.id}/figures`),
       ])
       if (varsRes.ok) {
         const text = await varsRes.text()
@@ -344,6 +347,10 @@ function ModulePlaceholder({ onGoHome }) {
       if (ctnsRes.ok) {
         const text = await ctnsRes.text()
         if (text) setContainers(JSON.parse(text))
+      }
+      if (figsRes.ok) {
+        const text = await figsRes.text()
+        if (text) setFigures(JSON.parse(text))
       }
       if (imgsRes.ok) {
         const text = await imgsRes.text()
@@ -477,6 +484,7 @@ function ModulePlaceholder({ onGoHome }) {
         variables={variables}
         containers={containers}
         images={images}
+        figures={figures}
         values={inputValues}
         onChange={setInputValues}
         editMode={editMode}

@@ -4,7 +4,9 @@ import { ReactGridLayout, WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import AuthedImage from './AuthedImage'
+import FigureView from './FigureView'
 import { groupByContainer, unplaced } from '../utils/placements'
+import { GRID_MARGIN, MIN_ROWS, ROW_HEIGHT, fitRows } from '../utils/fitContainer'
 import { flattenClipboardCells } from '../utils/clipboard'
 import ArrayResult from './ArrayResult'
 import { calculateCard, defaultInputValue } from '../utils/calcEngine'
@@ -59,21 +61,87 @@ const ContainerTitle = styled.h2`
   cursor: ${props => props.$editMode ? 'grab' : 'default'};
   flex-shrink: 0;
   user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 
   &:active { cursor: ${props => props.$editMode ? 'grabbing' : 'default'}; }
 `
 
-const ContainerContent = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+/**
+ * 이 상자를 내용에 맞추는 단추.
+ *
+ * 제목줄이 곧 끄는 손잡이라, 여기서 마우스를 눌러도 **끌기가 시작되면 안 된다** —
+ * 누를 때마다 상자가 딸려 오면 맞춤을 쓸 수가 없다.
+ */
+const FitBtn = styled.button`
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: var(--radius-sm);
+  background: hsl(var(--surface));
+  color: hsl(var(--fg-muted));
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
 
-  &::-webkit-scrollbar { width: 4px; }
+  &:hover {
+    border-color: hsl(var(--accent));
+    color: hsl(var(--accent));
+  }
+`
+
+/** 편집 중에만 보이는 띠. 상자마다 누르지 않아도 되게 한 번에 맞춘다. */
+const FitBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--accent) / 0.3);
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
+  font-size: 0.82rem;
+`
+
+const FitAllBtn = styled.button`
+  margin-left: auto;
+  padding: 5px 13px;
+  border: none;
+  border-radius: var(--radius);
+  background: hsl(var(--accent));
+  color: hsl(var(--solid-fg));
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+`
+
+/**
+ * 제목과 「계산」 사이의 **스크롤 되는 자리.**
+ *
+ * 전에는 변수 칸에만 스크롤이 걸려 있었다. 그래서 도해나 이미지가 상자보다
+ * 크면 그것들은 스크롤 **바깥**이라 잘린 채로 끝났다 — 스크롤 막대도 안 생기니
+ * 거기에 뭔가 더 있다는 사실조차 알 수 없었다.
+ *
+ * 맞춤 기능이 있어도 이게 있어야 한다. 맞춤은 「대개 잘 맞는다」 이지 「언제나
+ * 맞는다」 가 아니고(글꼴이 늦게 오거나 사람이 뒤에 손으로 줄이거나),
+ * **안 보이는 것이 있는 상태**는 어떤 경우에도 남으면 안 된다.
+ */
+const ContainerScroll = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar { width: 6px; }
   &::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--border-strong));
     border-radius: var(--radius-sm);
   }
+`
 
+const ContainerContent = styled.div`
   ${props => props.$columns > 1 && `
     display: grid;
     grid-template-columns: repeat(${props.$columns}, minmax(0, 1fr));
@@ -88,6 +156,11 @@ const ImageArea = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 상자가 짧아도 **눌리지 않는다.** 눌리면 도해 비율이 망가지고, 재는 쪽도
+     실제보다 작게 읽는다. 넘치면 잘리게 두는 편이 낫다 — 잘린 것은 「맞춤」
+     한 번으로 풀리지만, 찌그러진 그림은 그게 값 때문인지 자리 때문인지
+     알 수가 없다. */
+  flex-shrink: 0;
 `
 
 const ImageBlock = styled.div`
@@ -560,7 +633,7 @@ function UnitizedInput({ v, currentValue, onChange }) {
 // ============================================
 // Main Component
 // ============================================
-function InputVariables({ variables, containers, images = [], values, onChange, editMode, onLayoutChange, onCalculated }) {
+function InputVariables({ variables, containers, images = [], figures = [], values, onChange, editMode, onLayoutChange, onCalculated }) {
   const [calculated, setCalculated] = useState(false)
   const [computedOutputs, setComputedOutputs] = useState({})
 
@@ -604,9 +677,36 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
   containers.forEach(c => { containerMap[c.id] = c })
 
   const imagesByContainer = groupByContainer(images)
+  const figuresByContainer = groupByContainer(figures)
+
+  /**
+   * 도해가 값을 찾는 길 — 변수 id → `{ value, unit }`.
+   *
+   * 입력은 지금 화면의 값, 계산되는 값은 **계산한 뒤에만** 준다. 계산 전에
+   * 옛 결과를 주면 그림이 지금 입력과 안 맞는 형상을 그리는데, 그게 옛 값인지
+   * 지금 값인지 그림만 봐서는 알 수 없다.
+   *
+   * `useCallback` 인 것은 도해가 이 함수를 의존성으로 쓰기 때문이다 — 매번 새로
+   * 만들면 값이 그대로여도 그림을 다시 만든다.
+   */
+  // 상자마다 실제 DOM. 맞춤이 재려면 그린 것을 직접 봐야 한다.
+  const boxRefs = React.useRef({})
+
+  const lookup = useCallback((variableId) => {
+    const v = variables.find(x => String(x.id) === String(variableId))
+    if (!v) return null
+    // 입력칸이 그리는 것과 **똑같은 길**로 값을 얻는다. 슬라이더는 손대기 전에도
+    // 최솟값이 화면에 숫자로 보이는데, 여기서 `values[id]` 만 읽으면 도해는 그
+    // 값을 못 본다 — 화면에는 12 라고 적혀 있는데 도해는 「값이 필요합니다」 라고
+    // 말하게 되고, 그 어긋남은 아무 오류도 내지 않는다.
+    const raw = v.category === 'input'
+      ? (values[v.id] ?? defaultInputValue(v))
+      : (calculated ? computedOutputs[v.id]?.value : undefined)
+    return { value: raw, unit: v.unit || '', name: v.name }
+  }, [variables, values, calculated, computedOutputs])
 
   const activeContainerIds = containers
-    .filter(c => inputByContainer[c.id] || intermediateByContainer[c.id] || outputByContainer[c.id] || imagesByContainer[c.id])
+    .filter(c => inputByContainer[c.id] || intermediateByContainer[c.id] || outputByContainer[c.id] || imagesByContainer[c.id] || figuresByContainer[c.id])
     .filter(c => editMode || c.container_type !== 'hidden')
     .map(c => c.id)
 
@@ -625,7 +725,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
         y: c.layout_y ?? fallbackY,
         w: c.layout_w ?? 12,
         h: c.layout_h ?? 4,
-        minW: 3, minH: 2,
+        minW: 3, minH: MIN_ROWS,
         static: !editMode,
       })
       fallbackY = Math.max(fallbackY, (c.layout_y ?? 0) + (c.layout_h ?? 4))
@@ -667,6 +767,37 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
   }
 
   // --- 드래그/리사이즈 완료 시에만 서버 저장 ---
+  /**
+   * 상자를 안에 든 것에 맞춘다.
+   *
+   * 폭은 그대로 두고 **높이만** 고친다. 폭은 「화면을 어떻게 나눌까」 라는 사람의
+   * 결정이지 내용이 정할 일이 아니다. 도해는 폭에 맞춰 늘어나므로, 폭을 건드리면
+   * 높이가 또 달라져 맞춤이 자기 꼬리를 문다.
+   *
+   * y 는 안 보낸다 — 격자가 세로로 붙여 주므로(vertical compact) 아래 상자들은
+   * 저절로 따라 올라온다.
+   */
+  const fitContainers = useCallback((ids) => {
+    if (!onLayoutChange || !editMode) return
+    const updates = []
+    for (const cId of ids) {
+      const box = boxRefs.current[cId]
+      const rows = fitRows(box)
+      const c = containerMap[cId]
+      // 못 쟀거나 이미 맞으면 건드리지 않는다 — 안 바뀐 것을 저장하면
+      // 이력과 화면이 괜히 흔들린다.
+      if (rows === null || !c || rows === (c.layout_h ?? 4)) continue
+      updates.push({
+        id: cId,
+        x: c.layout_x ?? 0,
+        y: c.layout_y ?? 0,
+        w: c.layout_w ?? 12,
+        h: rows,
+      })
+    }
+    if (updates.length > 0) onLayoutChange(updates)
+  }, [onLayoutChange, editMode, containerMap])
+
   const handleLayoutSave = useCallback((layout) => {
     if (!onLayoutChange || !editMode) return
     const updates = []
@@ -690,6 +821,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
     const midVars = intermediateByContainer[cId] || []
     const outVars = outputByContainer[cId] || []
     const imgs = imagesByContainer[cId] || []
+    const figs = figuresByContainer[cId] || []
     const isInput = container.container_type === 'input'
     const isHidden = container.container_type === 'hidden'
     const computedVars = [...midVars, ...outVars]
@@ -697,11 +829,37 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
     const columns = Math.min(Math.max(Number(container.column_count) || 1, 1), 6)
 
     return (
-      <ContainerBox $editMode={editMode} style={isHidden ? { opacity: 0.55, borderStyle: 'dashed', borderColor: 'hsl(var(--fg-subtle))' } : undefined}>
+      <ContainerBox
+        ref={(el) => { boxRefs.current[cId] = el }}
+        $editMode={editMode}
+        style={isHidden ? { opacity: 0.55, borderStyle: 'dashed', borderColor: 'hsl(var(--fg-subtle))' } : undefined}>
         <ContainerTitle className="drag-handle" $editMode={editMode}>
           {container.name}
           {isHidden && <span style={{ marginLeft: 8, fontSize: '0.75rem', color: 'hsl(var(--fg-subtle))', fontWeight: 500 }}>(숨김)</span>}
+          {editMode && (
+            // 제목줄이 끄는 손잡이라, 여기서 시작된 마우스 누름은 막아야 한다 —
+            // 안 막으면 단추를 누를 때마다 상자가 딸려 온다.
+            <FitBtn
+              title="이 상자를 안에 든 것에 맞춥니다"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); fitContainers([cId]) }}>
+              ⤡ 맞춤
+            </FitBtn>
+          )}
         </ContainerTitle>
+        {/* 제목과 「계산」 만 자리에 붙어 있고 나머지는 함께 스크롤된다.
+            도해가 스크롤 밖에 있으면 잘린 채로 끝나고, 막대도 안 생겨
+            거기에 뭔가 더 있다는 것조차 알 수 없다. */}
+        <ContainerScroll>
+        {/* 도해가 **위**에 온다. 「무엇을 계산하는가」 를 먼저 보고 값을 읽는
+            편이, 값을 먼저 읽고 무엇이었는지 되짚는 것보다 낫다. */}
+        {figs.length > 0 && (
+          <ImageArea>
+            {figs.map(fig => (
+              <FigureView key={fig.id} figure={fig} lookup={lookup} />
+            ))}
+          </ImageArea>
+        )}
         {imgs.length > 0 && (
           <ImageArea>
             {imgs.map(img => (
@@ -730,6 +888,7 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
             ) : null
           )}
         </ContainerContent>
+        </ContainerScroll>
         {isInput && hasComputed && (
           <CalculateBtn onClick={handleCalculate}>계산</CalculateBtn>
         )}
@@ -741,17 +900,26 @@ function InputVariables({ variables, containers, images = [], values, onChange, 
 
   return (
     <GridWrapper $editMode={editMode}>
+      {/* 상자가 여럿이면 하나씩 누르는 것도 일이다. 편집 중에만 보인다. */}
+      {editMode && activeContainerIds.length > 0 && (
+        <FitBar>
+          모서리를 끌어 크기를 바꿉니다. 안에 든 것에 딱 맞추려면 오른쪽 단추를 쓰세요.
+          <FitAllBtn onClick={() => fitContainers(activeContainerIds)}>
+            ⤡ 전체 맞춤
+          </FitAllBtn>
+        </FitBar>
+      )}
       <ResponsiveGridLayout
         className="layout"
         layout={gridLayout}
         cols={12}
-        rowHeight={50}
+        rowHeight={ROW_HEIGHT}
         draggableHandle=".drag-handle"
         onDragStop={handleLayoutSave}
         onResizeStop={handleLayoutSave}
         isDraggable={editMode}
         isResizable={editMode}
-        margin={[16, 16]}
+        margin={[GRID_MARGIN, GRID_MARGIN]}
       >
           {activeContainerIds.map(cId => (
             <div key={`c-${cId}`}>
