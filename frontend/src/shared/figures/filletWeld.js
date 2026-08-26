@@ -72,11 +72,14 @@ function build(values) {
   const at = (key) => (example ? null : positive(values[key]))
   const dims = [
     // 다리길이 둘 — 세로 한 번, 가로 한 번. 둘이 같다는 것도 그림이 말한다.
+    //
+    // 치수선을 **판 두께 너머로** 뺀다. 구석에서 조금만 띄우면 치수선이 판의
+    // 해칭 위에 얹혀, 숫자가 형상에 묻힌다 — 판이 t 만큼 차지하고 있다.
     dim([0, -z], [0, 0],
-        { offset: -pad * 0.7, label: '{}', symbol: 'z',
+        { offset: -(t + pad * 0.7), label: '{}', symbol: 'z',
           value: at('z'), unit: values._units?.z }),
     dim([0, 0], [z, 0],
-        { offset: pad * 0.7, label: '{}', symbol: 'z',
+        { offset: t + pad * 0.7, label: '{}', symbol: 'z',
           value: at('z'), unit: values._units?.z }),
   ]
 

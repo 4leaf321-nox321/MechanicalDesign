@@ -155,6 +155,25 @@ export function bounds(shapes) {
     } else if (s.type === 'line' || s.type === 'flow') {
       see(s.x1, s.y1)
       see(s.x2, s.y2)
+    } else if (s.type === 'path') {
+      // 경로도 **세어야 한다.** 빠뜨리면 경로로만 그린 형상이 상자 밖으로
+      // 나가는데, 대개는 치수선이나 중심선이 우연히 자리를 덮어 안 보인다 —
+      // 그러다 경로뿐인 자리(휜 판 스프링의 꼭대기)에서 그림이 잘린다.
+      //
+      // 여기서 쓰는 명령은 M·L·Q·A·Z 뿐이다. M·L·Q 는 숫자가 전부 좌표쌍이고
+      // (Q 의 제어점은 곡선 밖일 수 있지만 곡선을 늘 감싸므로 넓어지는 쪽 오차다),
+      // A 는 일곱 값 중 마지막 둘만 좌표다 — 반지름·플래그를 좌표로 읽으면
+      // 원점 근처가 상자에 끼어든다.
+      const re = /([MLQA])([^MLQAZ]*)/g
+      let m
+      while ((m = re.exec(s.d)) !== null) {
+        const nums = (m[2].match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi) || []).map(Number)
+        if (m[1] === 'A') {
+          for (let i = 0; i + 6 < nums.length; i += 7) see(nums[i + 5], nums[i + 6])
+        } else {
+          for (let i = 0; i + 1 < nums.length; i += 2) see(nums[i], nums[i + 1])
+        }
+      }
     } else if (s.type === 'tag') {
       see(s.x, s.y)
     } else if (s.type === 'moment') {

@@ -43,6 +43,10 @@ function build(values) {
 
   // 피치원을 따로 준 카드도 있다. 있으면 그것을 믿고, 없으면 m·z 로 구한다 —
   // 둘이 다르면 카드가 이미 어긋난 것이라 여기서 판단할 일이 아니다.
+  // 피치원을 따로 준 카드도 있다. 있으면 그것을 믿고 그리되, m·z 와 어긋나면
+  // **어긋났다고 말한다** — 이 도해의 일이 어긋남을 보이는 것이라, 조용히
+  // 한쪽을 고르면 제 일과 반대로 간다. 필릿 용접이 a ≠ z/√2 를 말하는 것과
+  // 같은 이유다.
   const given = example ? null : positive(values.d)
   const d = given || m * z
   const rPitch = d / 2
@@ -50,6 +54,10 @@ function build(values) {
   const rRoot = rPitch - m * 1.25
 
   const notes = []
+  if (given && Math.abs(given - m * z) / (m * z) > 0.02) {
+    notes.push(`준 피치원 지름(${given})이 m·z = ${m * z} 와 다릅니다 — 그림은`
+      + ' 준 값을 따랐지만, 셋 중 하나는 어긋나 있습니다.')
+  }
   const drawTeeth = z <= MAX_TEETH
   if (!drawTeeth) {
     notes.push(`잇수가 ${z}개라 이를 하나씩 그리면 오히려 안 읽혀, 원만 그렸습니다.`)
@@ -93,12 +101,16 @@ function build(values) {
         { offset: rTip + pad * 1.9, label: 'Ø{}', symbol: 'da',
           value: example ? null : Math.round((rTip * 2) * 1000) / 1000,
           unit: values._units?.d }),
+    // da 는 카드의 값이 아니라 d + 2m 로 **구한** 값이다. 아래 노트가 그 사실을
+    // 말한다 — 구한 값을 준 값처럼 적으면 ㄷ형강 도심에서 지킨 규칙이 여기서만
+    // 빠진다.
   ]
 
   const tags = []
   if (!example) {
     tags.push({ type: 'tag', x: 0, y: -rTip - pad * 0.5,
                 text: `m = ${value('m')}, z = ${z}`, anchor: 'middle' })
+    notes.push('이끝원 지름(da)은 d + 2m 로 구한 값입니다 — 카드가 준 값이 아닙니다.')
   }
 
   return {

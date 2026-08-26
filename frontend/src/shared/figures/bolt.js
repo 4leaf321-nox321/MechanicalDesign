@@ -32,11 +32,18 @@ function build(values) {
   const example = missing.length > 0
   const d = example ? EXAMPLE.d : positive(values.d)
 
-  const plate = d * PLATE
+  const givenL = example ? null : positive(values.L)
+  // 판 둘과 너트는 볼트 길이 **안에** 들어가야 한다. 기본 비율(지름 기준)로는
+  // M12×20 같은 짧은 실제 규격에서 너트가 판 속에 그려진다 — 볼트 지름은 준
+  // 값이라 못 건드리지만, 판·너트는 그림용 값이므로 길이에 맞춰 세로만 조인다.
+  // 가로(머리 지름·판 폭)는 지름 기준 그대로다.
+  const squeeze = givenL
+    ? Math.min(1, givenL / (d * (PLATE * 2 + NUT_H) * 1.25))
+    : 1
+  const plate = d * PLATE * squeeze
   const headH = d * HEAD_H
   const headR = (d * HEAD_D) / 2
-  const nutH = d * NUT_H
-  const givenL = example ? null : positive(values.L)
+  const nutH = d * NUT_H * squeeze
   // 길이를 안 주면 머리 밑에서 너트 끝까지 딱 맞는 만큼만.
   const L = givenL || plate * 2 + nutH * 1.4
 

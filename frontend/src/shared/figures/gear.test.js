@@ -88,3 +88,21 @@ describe('값이 아직 없을 때', () => {
     expect(b.tags).toEqual([])
   })
 })
+
+describe('구한 값과 어긋난 값', () => {
+  it('da 가 구한 값이라고 말한다', () => {
+    const b = gear.build({ m: 4, z: 24 })
+    expect(b.notes.some(t => t.includes('구한 값'))).toBe(true)
+  })
+
+  it('준 d 가 m·z 와 다르면 어긋났다고 말한다', () => {
+    // 조용히 한쪽을 고르면, 어긋남을 보이라고 있는 도해가 어긋남을 숨긴다.
+    const b = gear.build({ m: 4, z: 24, d: 110 })
+    expect(b.notes.some(t => t.includes('96') && t.includes('110'))).toBe(true)
+  })
+
+  it('맞는 d 에는 그런 말이 없다', () => {
+    const b = gear.build({ m: 4, z: 24, d: 96 })
+    expect(b.notes.some(t => t.includes('어긋'))).toBe(false)
+  })
+})

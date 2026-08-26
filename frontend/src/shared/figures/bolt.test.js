@@ -73,3 +73,23 @@ describe('값이 아직 없을 때', () => {
     expect(b.dims.every(x => x.value === null)).toBe(true)
   })
 })
+
+describe('짧은 볼트', () => {
+  it('실제 규격의 짧은 길이에도 너트가 판 밖에 있다', () => {
+    // 판·너트는 그림용 값이라 길이에 맞춰 줄인다. 안 줄이면 M12×20 에서
+    // 너트가 판 사이에 그려진다 — 볼트 길이는 준 값이라 못 늘린다.
+    for (const L of [16, 20, 28, 40]) {
+      const b = bolt.build({ d: 12, L })
+      const plates = b.shapes.filter(s => s.type === 'rect' && s.role === 'cut')
+      const nut = b.shapes.filter(s => s.type === 'rect' && s.role === 'front').at(-1)
+      const bottom = Math.max(...plates.map(p => p.y + p.h))
+      expect(nut.y, `L=${L}`).toBeGreaterThanOrEqual(bottom)
+    }
+  })
+
+  it('넉넉한 길이에서는 원래 비율 그대로다', () => {
+    const b = bolt.build({ d: 12, L: 40 })
+    const plates = b.shapes.filter(s => s.type === 'rect' && s.role === 'cut')
+    expect(plates[0].h).toBeCloseTo(12 * 0.8, 9)
+  })
+})
