@@ -141,6 +141,10 @@ function Shape({ s, m }) {
             <path fillRule="evenodd" d={ring(s)} />
           </clipPath>
         </defs>
+        {/* 잘린 면은 **속이 찬다.** 테두리만 두면 뒤에 있는 선이 재료를 뚫고
+            지나가고, 그러면 무엇이 앞이고 무엇이 뒤인지 그림이 못 말한다.
+            사각형은 이미 그렇게 하고 있었는데 원만 빠져 있었다. */}
+        <path d={ring(s)} fillRule="evenodd" fill={fillFor(s.role)} stroke="none" />
         <g clipPath={`url(#${id})`}>
           {lines.map(([x1, y1, x2, y2], i) => (
             <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
