@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import styled from 'styled-components'
 import { apiFetch } from '../../api/client'
 import AuthedImage from '../AuthedImage'
+import { figureOf } from '../../figures'
 
 
 const Layout = styled.div`
@@ -98,14 +99,26 @@ const DropIndicator = styled.div`
   margin: 0 4px;
 `
 
+/** 종류마다 다른 색. 팔레트에서 셋을 눈으로 갈라 보려면 글자만으로는 모자라다. */
+const KIND_TINT = {
+  variable: { bg: 'hsl(var(--accent-soft))', fg: 'hsl(var(--accent))' },
+  image: { bg: 'hsl(var(--info-soft))', fg: 'hsl(var(--info))' },
+  figure: { bg: 'hsl(var(--ok-soft))', fg: 'hsl(var(--ok))' },
+}
+
+const KIND_LABEL = { variable: '변수', image: '이미지', figure: '도해' }
+
+/** 팔레트 순서. 변수 다음에 도해가 오는 편이 「무엇을 계산하나 → 어떻게 생겼나」 로 읽힐다. */
+const KIND_ORDER = { variable: 0, figure: 1, image: 2 }
+
 const KindBadge = styled.span`
   display: inline-block;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   font-size: 0.7rem;
   font-weight: 600;
-  background: ${p => p.$kind === 'image' ? 'hsl(var(--info-soft))' : 'hsl(var(--accent-soft))'};
-  color: ${p => p.$kind === 'image' ? 'hsl(var(--info))' : 'hsl(var(--accent))'};
+  background: ${p => KIND_TINT[p.$kind]?.bg || 'hsl(var(--accent-soft))'};
+  color: ${p => KIND_TINT[p.$kind]?.fg || 'hsl(var(--accent))'};
   flex-shrink: 0;
 `
 
@@ -202,7 +215,7 @@ function WidgetCardView({ widget, dragging, onDragStart, onDragEnd, cardId, usag
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <KindBadge $kind={widget.kind}>{widget.kind === 'image' ? '이미지' : '변수'}</KindBadge>
+      <KindBadge $kind={widget.kind}>{KIND_LABEL[widget.kind] || widget.kind}</KindBadge>
       {widget.kind === 'variable' && widget.category && (
         <CategoryBadge $cat={widget.category}>
           {widget.category === 'input' ? 'In' : widget.category === 'intermediate' ? 'Mid' : 'Out'}
@@ -237,7 +250,7 @@ function WidgetCardView({ widget, dragging, onDragStart, onDragEnd, cardId, usag
  *   컨테이너 → 팔레트    그 배치만 **제거** (위젯 자체는 남는다)
  *   같은 컨테이너 안      순서 바꾸기
  */
-function WidgetLayoutTab({ cardId, variables, images, containers, onRefresh }) {
+function WidgetLayoutTab({ cardId, variables, images, figures = [], containers, onRefresh }) {
   // 드래그 중인 것이 "어디서" 왔는지 함께 들고 있어야 한다. 같은 위젯이 팔레트와
   // 여러 컨테이너에 동시에 보이므로 uid 만으로는 출처를 알 수 없다.
   const [dragging, setDragging] = useState(null)   // { uid, from: 'palette' | '<containerId>' }
@@ -255,11 +268,17 @@ function WidgetLayoutTab({ cardId, variables, images, containers, onRefresh }) {
       name: i.filename,
       placements: i.placements || [], sort_order: i.sort_order || 0,
     })),
-  ]), [variables, images])
+    ...figures.map(f => ({
+      kind: 'figure', id: f.id, uid: `f-${f.id}`,
+      // 이름이 없으면 종류로 부른다 — 팔레트에서 「(이름 없음)」 은 고를 수 없다.
+      name: f.caption || figureOf(f.kind)?.name || f.kind,
+      placements: f.placements || [], sort_order: f.sort_order || 0,
+    })),
+  ]), [variables, images, figures])
 
   // 팔레트는 변수 먼저, 그다음 이미지 — 변수 정의 탭과 같은 순서라 눈이 헤매지 않는다.
   const palette = useMemo(() => [...widgets].sort((a, b) => (
-    (a.kind === b.kind ? 0 : a.kind === 'variable' ? -1 : 1)
+    (KIND_ORDER[a.kind] - KIND_ORDER[b.kind])
     || (a.sort_order - b.sort_order)
     || a.uid.localeCompare(b.uid)
   )), [widgets])

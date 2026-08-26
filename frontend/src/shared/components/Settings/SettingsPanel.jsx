@@ -3,6 +3,7 @@ import styled from 'styled-components'
 import VariableForm from './VariableForm'
 import ContainerTab from './ContainerTab'
 import ImageTab from './ImageTab'
+import FigureTab from './FigureTab'
 import WidgetLayoutTab from './WidgetLayoutTab'
 import { apiFetch } from '../../api/client'
 import { TabPane, TabScroll, TabToolbar } from './TabLayout'
@@ -257,6 +258,8 @@ function SettingsPanel({ cardId, onClose }) {
   const [variables, setVariables] = useState([])
   const [containers, setContainers] = useState([])
   const [images, setImages] = useState([])
+  // 도해 — 올리는 그림이 아니라 값으로 그리는 형상.
+  const [figures, setFigures] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editingVar, setEditingVar] = useState(null)
   const [draggingVarId, setDraggingVarId] = useState(null)
@@ -274,6 +277,7 @@ function SettingsPanel({ cardId, onClose }) {
     fetchContainers()
     fetchVariables()
     fetchImages()
+    fetchFigures()
   }, [cardId])
 
   const fetchVariables = async () => {
@@ -300,6 +304,15 @@ function SettingsPanel({ cardId, onClose }) {
       if (res.ok) setImages(await res.json())
     } catch (err) {
       console.error('Failed to fetch images:', err)
+    }
+  }
+
+  const fetchFigures = async () => {
+    try {
+      const res = await apiFetch(`/cards/${cardId}/figures`)
+      if (res.ok) setFigures(await res.json())
+    } catch (err) {
+      console.error('Failed to fetch figures:', err)
     }
   }
 
@@ -531,6 +544,9 @@ function SettingsPanel({ cardId, onClose }) {
           <Tab $active={activeTab === 'images'} onClick={() => { setActiveTab('images'); setShowForm(false) }}>
             이미지 정의
           </Tab>
+          <Tab $active={activeTab === 'figures'} onClick={() => { setActiveTab('figures'); setShowForm(false) }}>
+            도해
+          </Tab>
           <Tab $active={activeTab === 'layout'} onClick={() => { setActiveTab('layout'); setShowForm(false) }}>
             위젯 배치
           </Tab>
@@ -699,14 +715,26 @@ function SettingsPanel({ cardId, onClose }) {
             />
           )}
 
+          {activeTab === 'figures' && (
+            <TabScroll>
+              <FigureTab
+                cardId={cardId}
+                figures={figures}
+                variables={variables}
+                onRefresh={fetchFigures}
+              />
+            </TabScroll>
+          )}
+
           {activeTab === 'layout' && (
             <TabScroll>
               <WidgetLayoutTab
                 cardId={cardId}
                 variables={variables}
                 images={images}
+                figures={figures}
                 containers={containers}
-                onRefresh={() => { fetchVariables(); fetchImages() }}
+                onRefresh={() => { fetchVariables(); fetchImages(); fetchFigures() }}
               />
             </TabScroll>
           )}
