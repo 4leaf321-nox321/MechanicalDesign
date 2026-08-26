@@ -43,10 +43,24 @@ function stripNoise(source) {
     .replace(/"(?:[^"\\\n]|\\[\s\S])*"/g, '""')
 }
 
-/** `<Foo`, `<Foo.Bar` 에서 첫 마디만. 소문자로 시작하는 html 태그는 뺀다. */
+/**
+ * `<Foo`, `<Foo.Bar` 에서 첫 마디만. 소문자로 시작하는 html 태그는 뺀다.
+ *
+ * **비교 연산자를 태그로 읽지 않는다.** `Math.abs(a) < Math.abs(b)` 의 `< Math`
+ * 가 태그로 잡히면, 있지도 않은 컴포넌트를 없다고 우기게 된다. 그런 오탐이
+ * 쌓이면 사람이 검사기를 믿지 않게 되고, 그때부터는 진짜 빠진 import 도 그냥
+ * 넘어간다 — 검사기가 조용히 무력해지는 길이다.
+ *
+ * 가르는 법: 여는 태그 앞에는 `(`·`{`·`>`·`?`·`:`·`,`·`=`·줄바꿈 같은 것이 오고,
+ * 비교 연산자 앞에는 **값이 끝난 자리**가 온다 — 닫는 괄호나 이름의 마지막 글자.
+ */
 function usedComponents(source) {
   const names = new Set()
-  for (const m of source.matchAll(/<\s*([A-Z][A-Za-z0-9_]*)/g)) names.add(m[1])
+  for (const m of source.matchAll(/<\s*([A-Z][A-Za-z0-9_]*)/g)) {
+    const before = source.slice(0, m.index).replace(/\s+$/, '').slice(-1)
+    if (/[)\]\w.]/.test(before)) continue      // 값 뒤 → 비교 연산자다
+    names.add(m[1])
+  }
   return names
 }
 
