@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { cantilever, simple } from './beam'
+import { cantilever, fixedBoth, overhang, simple } from './beam'
 
 const beamOf = (b) => b.shapes.find(s => s.type === 'rect' && s.role === 'body')
 const wall = (b) => b.shapes.find(s => s.type === 'rect' && s.role === 'cut')
@@ -79,5 +79,63 @@ describe('둘이 같은 규칙을 지킨다', () => {
     expect(b.example).toBe(true)
     expect(b.flows).toEqual([])
     expect(b.dims.every(d => d.value === null)).toBe(true)
+  })
+})
+
+describe('양단고정보', () => {
+  const b = fixedBoth.build({ L: 3000, P: 15000 })
+
+  it('양끝이 다 벽에 물린다', () => {
+    expect(b.shapes.filter(s => s.type === 'rect' && s.role === 'cut'))
+      .toHaveLength(2)
+    expect(triangles(b)).toHaveLength(0)
+  })
+
+  it('하중은 한가운데다 — 여기가 P·L/8 이 나오는 자리다', () => {
+    expect(b.flows[0].x1).toBe(1500)
+  })
+
+  it('두 벽이 보의 양 끝에 붙는다', () => {
+    const walls = b.shapes.filter(s => s.type === 'rect' && s.role === 'cut')
+    const xs = walls.map(w => w.x + w.w / 2).sort((a, c) => a - c)
+    expect(xs[0]).toBeLessThan(0)
+    expect(xs[1]).toBeGreaterThan(2900)
+  })
+})
+
+describe('내민보', () => {
+  const b = overhang.build({ L: 2500, a: 800, P: 6000 })
+
+  it('보가 받침 너머로 이어진다', () => {
+    expect(beamOf(b).w).toBeCloseTo(3300, 9)
+  })
+
+  it('받침은 둘 다 스팬 안쪽 끝에 있다', () => {
+    // 굴림 받침이 보 끝이 아니라 **L 자리**에 있어야 내민보가 된다.
+    const feet = triangles(b).map(t => Number(t.d.split(' ')[1]))
+    expect(Math.min(...feet)).toBeCloseTo(0, 9)
+    expect(Math.max(...feet)).toBeGreaterThan(2400)
+    expect(Math.max(...feet)).toBeLessThan(2600)
+  })
+
+  it('하중은 **내민 끝**에 걸린다 — 받침 위에 P·a 를 만든다', () => {
+    expect(b.flows[0].x1).toBeCloseTo(3300, 9)
+  })
+
+  it('내민 길이를 주면 치수가 붙는다', () => {
+    expect(b.dims.find(d => d.symbol === 'a').value).toBe(800)
+  })
+
+  it('안 주면 보기 비율로 그리고 그 치수를 안 붙인다', () => {
+    // 붙이면 없는 값을 지어낸 것이 된다.
+    const guess = overhang.build({ L: 2500, P: 6000 })
+    expect(guess.dims.find(d => d.symbol === 'a')).toBeUndefined()
+    expect(guess.notes.some(t => t.includes('배선되지'))).toBe(true)
+    expect(beamOf(guess).w).toBeGreaterThan(2500)
+  })
+
+  it('내민 칸은 내민보에만 있다', () => {
+    expect(overhang.params.map(p => p.key)).toContain('a')
+    expect(simple.params.map(p => p.key)).not.toContain('a')
   })
 })
