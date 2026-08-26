@@ -14,6 +14,7 @@ import TokensPage from './modules/auth/TokensPage'
 import RecordsPage from './modules/records/RecordsPage'
 import WorkflowEditorPage from './modules/workflows/WorkflowEditorPage'
 import RecordDetailPage from './modules/records/RecordDetailPage'
+import RecordComparePage from './modules/records/RecordComparePage'
 import AccountsAdminPage from './modules/accounts/AccountsAdminPage'
 
 // ============================================
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route element={<AppShell />}>
           <Route path="/tokens" element={<TokensPage />} />
           <Route path="/records" element={<RecordsPage />} />
+          <Route path="/records/compare" element={<RecordComparePage />} />
           <Route path="/records/:recordId" element={<RecordDetailPage />} />
           <Route path="/" element={<MainPage />} />
         {/* 카드 catch-all(/*) 보다 **먼저** 와야 한다. 뒤에 두면 워크플로

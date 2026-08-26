@@ -14,6 +14,7 @@ from app.extensions import db
 from app.modules.cards.models import Card, Variable
 from app.shared.auth import current_user
 
+from . import compare
 from .models import CalculationRecord
 
 records_bp = Blueprint('records', __name__)
@@ -259,6 +260,37 @@ def list_records():
         'per_page': per_page,
         'pages': pages,
     })
+
+
+@records_bp.route('/compare', methods=['GET'])
+def compare_records():
+    """기록 둘을 견준다 — `?a=12&b=15`.
+
+    **`/<record_id>` 보다 위에 둔다.** 아래에 두면 Flask 가 `/compare` 를 기록
+    id 로 읽으려다 404 를 돌려준다.
+    """
+    a_id = request.args.get('a', type=int)
+    b_id = request.args.get('b', type=int)
+    if not a_id or not b_id:
+        return jsonify({'error': '견줄 기록 둘을 골라 주세요.'}), 400
+    if a_id == b_id:
+        return jsonify({'error': '같은 기록끼리는 견줄 것이 없습니다.'}), 400
+
+    actor = current_user()
+    rows = []
+    for record_id in (a_id, b_id):
+        row = CalculationRecord.query.get(record_id)
+        if row is None or not row.is_visible_to(actor):
+            # 있다는 사실 자체를 알려 주지 않는다 — 기록 하나를 열 때와 같다.
+            return jsonify({'error': '기록을 찾을 수 없습니다.'}), 404
+        rows.append(row)
+
+    a, b = (r.to_dict(full=True) for r in rows)
+    body = compare.compare(a, b)
+    # 어느 쪽이 무엇이었는지 화면이 다시 묻지 않아도 되게 함께 싣는다.
+    body['a'] = rows[0].to_dict()
+    body['b'] = rows[1].to_dict()
+    return jsonify(body)
 
 
 @records_bp.route('/<int:record_id>', methods=['GET'])

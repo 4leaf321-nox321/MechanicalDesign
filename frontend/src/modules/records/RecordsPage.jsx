@@ -105,6 +105,51 @@ const DangerBtn = styled.button`
   &:hover { background: hsl(var(--danger-soft)); }
 `
 
+/** 견줄 둘을 고르는 칸. 표 안이라 줄을 눌러 여는 것과 부딪히면 안 된다. */
+const Pick = styled.input.attrs({ type: 'checkbox' })`
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  accent-color: hsl(var(--accent));
+`
+
+const CompareBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--accent) / 0.35);
+  background: hsl(var(--accent-soft));
+  color: hsl(var(--accent));
+  font-size: 0.88rem;
+`
+
+const CompareBtn = styled.button`
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: none;
+  background: hsl(var(--accent));
+  color: hsl(var(--solid-fg));
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`
+
+const ClearBtn = styled.button`
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--accent) / 0.35);
+  background: none;
+  color: hsl(var(--accent));
+  font-size: 0.85rem;
+  cursor: pointer;
+`
+
 const Pager = styled.div`
   display: flex;
   align-items: center;
@@ -159,6 +204,9 @@ export default function RecordsPage() {
   const [error, setError] = useState('')
   const [keyword, setKeyword] = useState('')
   const [mineOnly, setMineOnly] = useState(false)
+  // 견줄 둘. **순서를 지킨다** — 먼저 고른 것이 「이전」, 나중이 「이후」 다.
+  // 집합으로 두면 그 순서를 잃고, 그러면 차이의 부호가 뒤집혀 보인다.
+  const [picked, setPicked] = useState([])
 
   // 카드나 워크플로 화면에서 「이걸로 계산한 기록」 을 누르면 여기로 온다.
   // 걸러 내기는 서버가 이미 하고 있었다 — 화면만 그 길을 안 쓰고 있었다.
@@ -240,6 +288,22 @@ export default function RecordsPage() {
           </Toggle>
         </Bar>
 
+        {/* 하나만 골랐을 때도 띄운다 — 안 띄우면 「하나 더 고르면 된다」 를
+            알 방법이 체크박스뿐이고, 그건 눈에 안 띈다. */}
+        {picked.length > 0 && (
+          <CompareBar>
+            {picked.length === 1
+              ? '하나 더 고르면 두 계산의 차이를 볼 수 있습니다.'
+              : '고른 둘을 견줍니다. 먼저 고른 쪽이 「이전」 입니다.'}
+            <ClearBtn onClick={() => setPicked([])}>선택 해제</ClearBtn>
+            <CompareBtn
+              disabled={picked.length !== 2}
+              onClick={() => navigate(`/records/compare?a=${picked[0]}&b=${picked[1]}`)}>
+              비교하기
+            </CompareBtn>
+          </CompareBar>
+        )}
+
         <Panel>
           {loading ? (
             <Empty>불러오는 중…</Empty>
@@ -253,6 +317,7 @@ export default function RecordsPage() {
             <Table>
               <thead>
                 <tr>
+                  <Th />
                   <Th>기록</Th>
                   <Th>카드</Th>
                   <Th>계산한 사람</Th>
@@ -263,6 +328,21 @@ export default function RecordsPage() {
               <tbody>
                 {records.map((record) => (
                   <Row key={record.id} onClick={() => navigate(`/records/${record.id}`)}>
+                    {/* 줄을 누르면 기록이 열린다. 칸을 누르는 것은 **고르는**
+                        일이라, 여는 것까지 함께 일어나면 안 된다. */}
+                    <Td onClick={(e) => e.stopPropagation()}>
+                      <Pick
+                        checked={picked.includes(record.id)}
+                        onChange={() => setPicked(was => (
+                          was.includes(record.id)
+                            ? was.filter(id => id !== record.id)
+                            // 셋째를 고르면 **가장 오래된 것을 밀어낸다.**
+                            // 그냥 막으면 왜 안 되는지 알 수 없고, 먼저 지우게
+                            // 하는 것은 한 걸음이 더 든다.
+                            : [...was, record.id].slice(-2)
+                        ))}
+                      />
+                    </Td>
                     <Td>
                       <TitleCell>{record.title}</TitleCell>
                       {record.note && <NoteCell>{record.note}</NoteCell>}
