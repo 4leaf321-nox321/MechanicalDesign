@@ -20,6 +20,9 @@ from app.modules.accounts.models import User
 from app.modules.auth import security, tokens
 from app.modules.cards.models import Card, Variable
 from app.modules.records.models import CalculationRecord
+from tests.test_workflows import (   # noqa: F401  (픽스처를 가져온다)
+    _link, _node, chain,
+)
 
 
 @pytest.fixture
@@ -466,3 +469,44 @@ def test_a_machine_can_save_a_record(app, client):
     card_id, ids = _card(app, user_id)
     r = _save(client, _machine(app, user_id), card_id, ids, title='AI 시험 계산')
     assert r.status_code == 201
+
+
+def test_a_nested_workflow_record_carries_the_inner_definitions(app, client, chain):
+    """**기록은 자기 힘으로 「그때 무엇을 계산했나」 를 말할 수 있어야 한다.**
+
+    중첩된 자리는 겉에서 보면 카드가 없다 — `card_id` 가 비어 있다. 겉만 훑으면
+    안쪽 카드 정의가 통째로 빠지고, 그 기록은 재현이 안 된다. 카드가 살아 있는
+    참조라 나중에 열어 봐도 그때의 정의를 알 길이 없다.
+    """
+    head = chain['head']
+    inner, n1, n2 = None, None, None
+
+    inner_wf = chain['wf']
+    n1 = _node(client, head, inner_wf['id'], chain['load_id'])
+    n2 = _node(client, head, inner_wf['id'], chain['stress_id'])
+    _link(client, head, inner_wf['id'], n1, chain['load_vars']['F'],
+          n2, chain['stress_vars']['Fin'])
+
+    outer = client.post('/api/workflows', json={'name': '바깥'},
+                        headers=head).get_json()
+    box = client.post(f"/api/workflows/{outer['id']}/nodes", headers=head,
+                      json={'sub_workflow_id': inner_wf['id'], 'alias': '앞단'})
+    assert box.status_code == 201, box.get_json()
+    box = box.get_json()
+
+    r = client.post('/api/records', headers=head, json={
+        'workflow_id': outer['id'], 'title': '중첩 기록',
+        'inputs': {str(box['id']): {}}, 'results': {str(box['id']): {}},
+    })
+    assert r.status_code == 201, r.get_json()
+
+    detail = client.get(f"/api/records/{r.get_json()['id']}",
+                        headers=head).get_json()
+    snapshot = detail['definition_snapshot']
+
+    # 안쪽 두 카드의 정의가 다 들어 있어야 한다.
+    assert str(chain['load_id']) in snapshot['cards']
+    assert str(chain['stress_id']) in snapshot['cards']
+    assert snapshot['cards'][str(chain['load_id'])]
+    # 안쪽 배선도 함께. 없으면 값이 어디로 흘렀는지 되짚을 수 없다.
+    assert snapshot['nodes'][0]['sub_workflow']['links']

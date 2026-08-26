@@ -21,6 +21,9 @@ records_bp = Blueprint('records', __name__)
 MAX_TITLE = 200
 PAGE_SIZE = 50
 
+#: 하위 워크플로를 몇 겹까지 파고들어 담을까. 실행기와 같은 한도.
+_MAX_NEST = 12
+
 
 def _snapshot(card_id):
     """계산 당시의 변수 정의를 통째로 뜬다.
@@ -34,25 +37,68 @@ def _snapshot(card_id):
     return [v.to_dict() for v in variables]
 
 
+def _cards_within(workflow, seen=None, depth=0):
+    """이 워크플로가 (몇 겹이든) 쓰는 카드 id 전부.
+
+    하위 워크플로를 파고들지 않으면 중첩된 자리의 카드가 통째로 빠진다 — 겉의
+    노드는 `card_id` 가 비어 있기 때문이다. 그러면 기록은 「무엇을 계산했나」 를
+    못 말하게 되고, 그건 기록이 아니다.
+    """
+    seen = seen if seen is not None else set()
+    ids = set()
+    if depth >= _MAX_NEST:
+        return ids
+    for node in workflow.nodes:
+        if node.sub_workflow_id is not None:
+            if node.sub_workflow is None or node.sub_workflow_id in seen:
+                continue
+            seen.add(node.sub_workflow_id)
+            ids |= _cards_within(node.sub_workflow, seen, depth + 1)
+        elif node.card_id is not None:
+            ids.add(node.card_id)
+    return ids
+
+
+def _wiring_of(workflow, seen=None, depth=0):
+    """배선을 층째로. 하위 워크플로는 그 자리에 통째로 실린다."""
+    seen = seen if seen is not None else set()
+    body = {
+        'id': workflow.id,
+        'name': workflow.name,
+        'nodes': [n.to_dict() for n in workflow.nodes],
+        'links': [l.to_dict() for l in workflow.links],
+    }
+    if depth >= _MAX_NEST:
+        body['too_deep'] = True
+        return body
+    for node, row in zip(workflow.nodes, body['nodes']):
+        if node.sub_workflow is not None and node.sub_workflow_id not in seen:
+            seen.add(node.sub_workflow_id)
+            row['sub_workflow'] = _wiring_of(node.sub_workflow, seen, depth + 1)
+    return body
+
+
 def _workflow_snapshot(workflow):
-    """워크플로의 배선 + 노드가 쓰는 카드의 변수 정의 전부.
+    """워크플로의 배선 + 그것이 쓰는 카드의 변수 정의 전부.
 
     카드가 살아 있는 참조라, 이것을 안 담으면 나중에 기록을 열었을 때 **그때
     무엇을 계산한 것인지** 알 수 없다. 카드 기록이 정의 스냅샷을 뜨는 것과 같은
     이유이고, 여기서는 카드가 여럿일 뿐이다.
+
+    **하위 워크플로도 살아 있는 참조다.** 중첩된 자리는 겉에서 보면 카드가 없어
+    보이지만, 그 안에서 실제로 도는 것은 카드들이다. 안쪽 배선과 안쪽 카드까지
+    담아야 기록이 자기 힘으로 「그때 무엇을 계산했나」 를 말할 수 있다.
     """
     cards = {}
-    for node in workflow.nodes:
-        key = str(node.card_id)
-        if key in cards:
-            continue
-        rows = (Variable.query.filter_by(card_id=node.card_id)
+    for card_id in sorted(_cards_within(workflow)):
+        rows = (Variable.query.filter_by(card_id=card_id)
                 .order_by(Variable.sort_order).all())
-        cards[key] = [v.to_dict() for v in rows]
+        cards[str(card_id)] = [v.to_dict() for v in rows]
 
+    wiring = _wiring_of(workflow)
     return {
-        'nodes': [n.to_dict() for n in workflow.nodes],
-        'links': [l.to_dict() for l in workflow.links],
+        'nodes': wiring['nodes'],
+        'links': wiring['links'],
         'cards': cards,
     }
 
