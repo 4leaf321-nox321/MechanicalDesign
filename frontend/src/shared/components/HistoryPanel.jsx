@@ -131,9 +131,15 @@ const Change = styled.div`
 `
 
 const KIND_COLOR = {
+  // 「여기서부터 기록한다」 는 표시. 누가 한 일이 아니라 출발점이라 무채색이다.
+  baseline: 'hsl(var(--border-strong))',
   added: 'hsl(var(--ok))',
   removed: 'hsl(var(--danger))',
   changed: 'hsl(var(--warn))',
+  // 워크플로 쪽에서 더 오는 둘. 값이 바뀐 것과 계산 방법이 바뀐 것은 성격이
+  // 달라서, 한 목록에 섞여도 눈으로 갈라 볼 수 있어야 한다.
+  value: 'hsl(var(--accent))',
+  iteration: 'hsl(var(--info))',
 }
 
 const RestoreBtn = styled.button`
@@ -178,7 +184,32 @@ function formatWhen(iso) {
     + `${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export default function HistoryPanel({ cardId, cardName, canRestore, onClose, onRestored }) {
+/**
+ * 카드와 워크플로가 **같은 판**을 쓴다.
+ *
+ * 이력 화면을 둘로 나누면 두 벌이 되고, 두 벌은 반드시 어긋난다 — 그때 나란히
+ * 놓인 두 목록이 같은 종류의 변경을 서로 다른 말과 색으로 말하게 된다. 서버가
+ * 두 이력을 같은 모양(`changes` 목록)으로 내려 주므로 화면도 하나면 된다.
+ */
+const SOURCE = {
+  card: {
+    base: (id) => `/cards/${id}`,
+    empty: '변수를 고치면 여기에 남습니다.',
+  },
+  workflow: {
+    base: (id) => `/workflows/${id}`,
+    empty: '배선이나 값을 고치면 여기에 남습니다.',
+    // 되돌리기가 없다. 되돌리려면 노드를 지우고 다시 만들어야 하는데, 이
+    // 워크플로를 품은 바깥 워크플로의 배선은 **안쪽 노드 id** 를 가리킨다 —
+    // 되돌리는 순간 그 배선들이 없는 자리를 가리키고, 아무 오류도 안 난다.
+    noRestore: true,
+  },
+}
+
+export default function HistoryPanel({
+  kind = 'card', cardId, cardName, canRestore, onClose, onRestored,
+}) {
+  const source = SOURCE[kind] || SOURCE.card
   const { confirm } = useDialog()
   const { user } = useAuth()
   const [entries, setEntries] = useState([])
@@ -189,14 +220,14 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setEntries(await api.get(`/cards/${cardId}/revisions`))
+      setEntries(await api.get(`${source.base(cardId)}/revisions`))
       setError('')
     } catch (err) {
       setError(err.message || '이력을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [cardId])
+  }, [cardId, source])
 
   useEffect(() => { load() }, [load])
 
@@ -211,7 +242,7 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
     setBusy(true)
     setError('')
     try {
-      await api.post(`/cards/${cardId}/revisions/${entry.id}/restore`, {})
+      await api.post(`${source.base(cardId)}/revisions/${entry.id}/restore`, {})
       await load()
       if (onRestored) onRestored()
     } catch (err) {
@@ -240,13 +271,20 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
           ) : entries.length === 0 ? (
             <Empty>
               아직 기록된 변경이 없습니다.{'\n'}
-              변수를 고치면 여기에 남습니다.
+              {source.empty}
             </Empty>
           ) : (
             entries.map((entry, index) => (
               <Entry key={entry.id}>
                 <EntryHead>
-                  <Who>{entry.changed_by_name || '(삭제된 계정)'}</Who>
+                  {/* 출발점 줄에는 사람이 없다. 그 자리를 「삭제된 계정」 으로
+                      메우면, 아무도 한 적 없는 일을 누가 하고 사라진 것처럼
+                      읽힌다. */}
+                  <Who>
+                    {entry.changes.some(c => c.kind === 'baseline')
+                      ? '기록 시작'
+                      : (entry.changed_by_name || '(삭제된 계정)')}
+                  </Who>
                   {entry.via_token && <AiTag>AI · MCP</AiTag>}
                   {index === 0 && <NowTag>현재</NowTag>}
                   <When>{formatWhen(entry.created_at)}</When>
@@ -263,7 +301,7 @@ export default function HistoryPanel({ cardId, cardName, canRestore, onClose, on
                 )}
 
                 {/* 지금 상태로 되돌리는 것은 아무 일도 아니므로 버튼을 두지 않는다. */}
-                {canRestore && index > 0 && (
+                {canRestore && !source.noRestore && index > 0 && (
                   <RestoreBtn disabled={busy} onClick={() => handleRestore(entry)}>
                     이 시점으로 되돌리기
                   </RestoreBtn>

@@ -24,6 +24,7 @@ import { fmt } from '../../shared/utils/goalSeek'
 import AppHeader, { BarButton } from '../../shared/components/AppHeader'
 import { useDialog } from '../../shared/components/Dialog'
 import RecordPicker from '../../shared/components/RecordPicker'
+import HistoryPanel from '../../shared/components/HistoryPanel'
 import { describeLoad, mapWorkflowInputs } from './loadWorkflowInputs'
 import WorkflowCanvas from './WorkflowCanvas'
 import * as S from './editorStyles'
@@ -54,6 +55,7 @@ function WorkflowEditorPage() {
 
   // 카드를 고르는 `picking` 과 다른 창이다. 하나는 무엇을 넣을지,
   // 다른 하나는 어떤 값으로 채울지를 고른다.
+  const [showHistory, setShowHistory] = useState(false)
   const [loadingRecord, setLoadingRecord] = useState(false)
   const [loadMsg, setLoadMsg] = useState(null)
   // 순서도에서 지금 고른 노드들. 묶을 것이 있는지가 여기서 정해진다.
@@ -591,6 +593,11 @@ function WorkflowEditorPage() {
             <BarButton onClick={() => navigate(`/records?workflow_id=${workflow.id}`)}>
               계산 기록
             </BarButton>
+            {/* 「답이 어제와 다른데 아무도 손댄 기억이 없다」 를 되짚는 자리.
+                카드와 같은 판을 쓴다. */}
+            <BarButton onClick={() => setShowHistory(true)}>
+              변경 이력
+            </BarButton>
             {workflow.status === 'draft' && (
               <BarButton onClick={publish} disabled={workflow.nodes.length === 0}>
                 게시하기
@@ -631,6 +638,15 @@ function WorkflowEditorPage() {
             note={<>고른 기록의 <b>입력값만</b> 채웁니다. 연결로 들어오는 칸은 앞 노드가 덮으므로 건너뛰고, <b>되먹임 초기 추정값</b>은 사람이 정하는 값이라 그대로 가져옵니다.</>}
             onPick={loadInputs}
             onClose={() => setLoadingRecord(false)}
+          />
+        )}
+
+        {showHistory && (
+          <HistoryPanel
+            kind="workflow"
+            cardId={workflow.id}
+            cardName={workflow.name}
+            onClose={() => setShowHistory(false)}
           />
         )}
 

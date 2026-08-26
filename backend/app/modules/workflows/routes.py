@@ -7,7 +7,7 @@
 
 from datetime import datetime
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from app.extensions import db
 from app.modules.orgs import services as org_services
@@ -15,14 +15,57 @@ from app.modules.orgs.models import Organization
 from app.shared.auth import current_user
 from app.shared.errors import AppError
 
-from . import services
-from .models import Workflow, WorkflowMount, WorkflowNode
+from . import revisions, services
+from .models import Workflow, WorkflowMount, WorkflowNode, WorkflowRevision
 
 workflows_bp = Blueprint('workflows', __name__)
 
 
 def _acting_via_token():
     return bool(getattr(g, 'via_token', False))
+
+
+@workflows_bp.after_request
+def _keep_history(response):
+    """뭔가 바꾸는 요청이 성공했으면 이력을 남긴다.
+
+    **어느 엔드포인트가 정의를 바꾸는지 목록으로 관리하지 않는다.** 목록을 두면
+    새 엔드포인트가 생길 때마다 거기에 한 줄을 더해야 하고, 언젠가 빠뜨리고,
+    빠뜨린 자리는 아무 오류도 내지 않는다 — 이력이 조용히 비는 것이 이 기능에서
+    가장 나쁜 실패다. 여기서 한 번에 걸고, 무엇이 실제로 달라졌는지는
+    `revisions.record` 가 스냅샷을 견주어 판단한다. 좌표를 옮기거나 상자를
+    두른 요청은 스냅샷이 같으므로 저절로 아무 줄도 안 남긴다.
+
+    **이력을 못 남기는 것이 계산을 못 하게 만들면 안 된다.** 바꾸는 일은 이미
+    끝났고 응답도 만들어졌다. 여기서 터져 500 을 돌려주면, 사람은 저장이
+    실패한 줄 알고 같은 일을 다시 한다.
+    """
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return response
+    if not 200 <= response.status_code < 300:
+        return response
+
+    workflow_id = (request.view_args or {}).get('workflow_id')
+    if not workflow_id:
+        # 워크플로를 새로 만드는 요청. 빈 워크플로에는 남길 배선이 없고,
+        # 첫 이력은 첫 수정 때 만들어진다.
+        return response
+
+    try:
+        workflow = db.session.get(Workflow, workflow_id)
+        if workflow is not None:
+            actor = current_user()
+            revisions.record(workflow, actor.id if actor else None,
+                             _acting_via_token())
+    except Exception:                                    # noqa: BLE001
+        db.session.rollback()
+        # **조용히 삼키지 않는다.** 이력이 안 남는 것은 이 기능이 막으려던 바로
+        # 그 실패인데, 삼키면 화면은 멀쩡해 보이고 이력만 비어 간다. 요청은
+        # 살려 두되(바꾸는 일은 이미 끝났다) 로그에는 남긴다.
+        current_app.logger.exception('워크플로 %s 의 개정 이력을 남기지 못했습니다',
+                                     workflow_id)
+
+    return response
 
 
 # --- 목록과 하나 ------------------------------------------------------------------
@@ -229,6 +272,32 @@ def purge_workflow(workflow_id):
     db.session.delete(wf)
     db.session.commit()
     return jsonify({'message': '완전히 삭제되었습니다.'}), 200
+
+
+# --- 개정 이력 --------------------------------------------------------------------
+
+@workflows_bp.route('/<int:workflow_id>/revisions', methods=['GET'])
+def list_revisions(workflow_id):
+    """이 워크플로가 언제 누구에 의해 어떻게 바뀌었나. 최신순.
+
+    스냅샷은 싣지 않는다 — 이력이 스무 개면 응답이 배선 스무 벌이 된다. 목록은
+    "무엇이 바뀌었나" 만 답하면 되고, 그건 `changes` 에 미리 계산돼 있다.
+    """
+    services.get_visible(workflow_id, current_user())
+    rows = (WorkflowRevision.query.filter_by(workflow_id=workflow_id)
+            .order_by(WorkflowRevision.id.desc()).limit(100).all())
+    return jsonify([r.to_dict() for r in rows])
+
+
+@workflows_bp.route('/<int:workflow_id>/revisions/<int:revision_id>', methods=['GET'])
+def get_revision(workflow_id, revision_id):
+    """그 시점의 배선과 값 전부."""
+    services.get_visible(workflow_id, current_user())
+    row = WorkflowRevision.query.filter_by(
+        id=revision_id, workflow_id=workflow_id).first()
+    if row is None:
+        raise AppError('MD-WF-0141', '그 개정 이력을 찾을 수 없습니다.', status=404)
+    return jsonify(row.to_dict(full=True))
 
 
 # --- 게시 ------------------------------------------------------------------------

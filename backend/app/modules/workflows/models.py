@@ -365,3 +365,66 @@ class WorkflowLink(db.Model):
             'to_variable_id': self.to_variable_id,
             'to_label': self.to_label or '',
         }
+
+
+class WorkflowRevision(db.Model):
+    """워크플로의 배선이나 값이 바뀐 시점 하나.
+
+    카드의 `CardRevision` 과 **같은 모양**이다. 두 이력이 서로 다르게 생기면,
+    화면에서 나란히 놓인 두 목록이 서로 다른 것을 뜻하게 된다.
+
+    워크플로를 지우면 이력도 함께 사라진다(CASCADE). 없는 워크플로의 이력은
+    되짚을 대상이 없다 — 그때의 계산이 필요하면 계산 기록이 자기 스냅샷을
+    들고 있다.
+    """
+
+    __tablename__ = 'workflow_revisions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_id = db.Column(db.Integer,
+                            db.ForeignKey('workflows.id', ondelete='CASCADE'),
+                            nullable=False, index=True)
+
+    snapshot = db.Column(db.Text, nullable=False)
+    """그때의 배선과 값 전부. 되짚을 때 이것만 열면 된다."""
+
+    summary = db.Column(db.Text, nullable=False, default='[]')
+    """앞 이력과 견준 변경 목록. 미리 계산해 둔다 — 목록 화면이 이력 수만큼
+    스냅샷을 열어 비교하면, 이력이 쌓일수록 화면이 느려진다."""
+
+    changed_by_id = db.Column(db.Integer,
+                              db.ForeignKey('users.id', ondelete='SET NULL'),
+                              nullable=True)
+    changed_by = db.relationship('User', foreign_keys=[changed_by_id])
+
+    via_token = db.Column(db.Boolean, nullable=False, default=False,
+                          server_default='false')
+    """사람이 웹에서 고쳤는지, 기계(MCP·스크립트)가 고쳤는지."""
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    """이어진 수정을 한 이력으로 묶으므로 시작과 끝이 다를 수 있다."""
+
+    def to_dict(self, full=False):
+        body = {
+            'id': self.id,
+            'workflow_id': self.workflow_id,
+            'changed_by_id': self.changed_by_id,
+            'changed_by_name': (self.changed_by.display_name
+                                if self.changed_by else None),
+            'via_token': bool(self.via_token),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'changes': self._load(self.summary, []),
+        }
+        if full:
+            body['snapshot'] = self._load(self.snapshot, {})
+        return body
+
+    @staticmethod
+    def _load(raw, fallback):
+        try:
+            return json.loads(raw) if raw else fallback
+        except ValueError:
+            # 한 행이 깨졌다고 이력 화면 전체가 500 이 되어서는 안 된다.
+            return fallback
