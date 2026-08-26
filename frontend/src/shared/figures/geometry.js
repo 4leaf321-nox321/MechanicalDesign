@@ -181,6 +181,19 @@ export function bounds(shapes) {
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
 }
 
+/**
+ * 부호가 **뜻을 갖는** 값. 0 도 음수도 그대로 돌려준다.
+ *
+ * `positive` 와 나눠 둔 이유: 길이나 지름은 음수면 형상이 안 되므로 없는 값으로
+ * 보는 게 맞지만, 응력은 음수가 압축이고 0 이 무응력이라 **둘 다 정상**이다.
+ * 여기에 `positive` 를 쓰면 압축응력이 조용히 「값 없음」 으로 바뀌어, 도해가
+ * 인장만 걸린 것처럼 그린다.
+ */
+export function finite(value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 /** 값이 도해를 그릴 수 있는 숫자인가. 0 과 음수는 형상이 아니다. */
 export function positive(value) {
   const n = Number(value)
