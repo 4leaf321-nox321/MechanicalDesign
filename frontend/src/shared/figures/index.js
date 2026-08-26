@@ -18,13 +18,16 @@ import boss from './boss'
 import coupling from './coupling'
 import column from './column'
 import filletWeld from './filletWeld'
+import gasket from './gasket'
 import gear from './gear'
+import hinge from './hinge'
 import journal from './journal'
 import mohr from './mohr'
 import drop from './drop'
 import finArray from './finArray'
 import { fillet, hole } from './notch'
 import pipe from './pipe'
+import pressFit from './pressFit'
 import rib from './rib'
 import rivet from './rivet'
 import sectionBox from './sectionBox'
@@ -48,6 +51,7 @@ const ALL = [
   coil, leaf,                                  // 스프링
   vessel, fillet, hole, mohr,                  // 압력·응력
   snapFit, rib, boss, drop, finArray, vibMount,  // 기구 — 가전·전자기기
+  hinge, pressFit, gasket,                     // 기구 — 힌지·압입·실링
   pipe,                                        // 유체
 ]
 

@@ -43,4 +43,7 @@ export const SAMPLE = {
   fin_array: { s: 8, t: 1.2, H: 35, n: 8 },
   // 세탁기 탈수 1440 rpm = 24 Hz. 격리 영역(f/fn = 3)인 값이다.
   vib_mount: { f: 24, fn: 8 },
+  hinge_torque: { W: 15, Lg: 120, theta: 105, Tf: 2000 },
+  press_fit: { d: 20, delta: 0.03, D: 40, L: 25 },
+  gasket_seal: { h0: 12, h: 9, w: 10 },
 }
