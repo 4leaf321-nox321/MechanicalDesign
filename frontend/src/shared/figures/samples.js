@@ -36,4 +36,11 @@ export const SAMPLE = {
   beam_overhang: { L: 2500, a: 800, P: 6000 },
   // 압축(음수)과 인장이 함께 걸린 값. 부호가 뜻을 갖는 유일한 도해다.
   mohr_circle: { sx: 80, sy: -20, txy: 30 },
+  snap_fit: { t: 2, L: 18, y: 2.5, alpha: 30 },
+  rib_wall: { t: 2.5, tr: 1.25, H: 6 },
+  screw_boss: { d: 3, D: 6, d1: 2.4, h: 6 },
+  drop_impact: { H: 1000, s: 1.5 },
+  fin_array: { s: 8, t: 1.2, H: 35, n: 8 },
+  // 세탁기 탈수 1440 rpm = 24 Hz. 격리 영역(f/fn = 3)인 값이다.
+  vib_mount: { f: 24, fn: 8 },
 }

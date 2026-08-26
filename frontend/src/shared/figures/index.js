@@ -14,23 +14,29 @@ import { cantilever, fixedBoth, overhang, simple } from './beam'
 import bearing from './bearing'
 import belt from './belt'
 import bolt from './bolt'
+import boss from './boss'
 import coupling from './coupling'
 import column from './column'
 import filletWeld from './filletWeld'
 import gear from './gear'
 import journal from './journal'
 import mohr from './mohr'
+import drop from './drop'
+import finArray from './finArray'
 import { fillet, hole } from './notch'
 import pipe from './pipe'
+import rib from './rib'
 import rivet from './rivet'
 import sectionBox from './sectionBox'
 import sectionChannel from './sectionChannel'
 import sectionI from './sectionI'
 import sectionRect from './sectionRect'
 import shaft from './shaft'
+import snapFit from './snapFit'
 import { coil, leaf } from './spring'
 import sunkKey from './sunkKey'
 import vessel from './vessel'
+import vibMount from './vibMount'
 
 // 순서가 고르는 목록의 순서다. 자주 쓰는 것부터.
 const ALL = [
@@ -41,6 +47,7 @@ const ALL = [
   gear, belt,                                  // 전동
   coil, leaf,                                  // 스프링
   vessel, fillet, hole, mohr,                  // 압력·응력
+  snapFit, rib, boss, drop, finArray, vibMount,  // 기구 — 가전·전자기기
   pipe,                                        // 유체
 ]
 
