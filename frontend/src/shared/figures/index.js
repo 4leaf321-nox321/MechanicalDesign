@@ -10,26 +10,37 @@
  * 그림이 없는 것과 구분이 안 된다.
  */
 
-import { cantilever, simple } from './beam'
+import { cantilever, fixedBoth, overhang, simple } from './beam'
 import bearing from './bearing'
 import belt from './belt'
 import bolt from './bolt'
+import coupling from './coupling'
 import column from './column'
 import filletWeld from './filletWeld'
 import gear from './gear'
+import journal from './journal'
+import mohr from './mohr'
+import { fillet, hole } from './notch'
 import pipe from './pipe'
 import rivet from './rivet'
+import sectionBox from './sectionBox'
+import sectionChannel from './sectionChannel'
 import sectionI from './sectionI'
 import sectionRect from './sectionRect'
 import shaft from './shaft'
+import { coil, leaf } from './spring'
 import sunkKey from './sunkKey'
+import vessel from './vessel'
 
 // 순서가 고르는 목록의 순서다. 자주 쓰는 것부터.
 const ALL = [
-  shaft, sunkKey, bearing,                     // 축계
-  sectionRect, sectionI, cantilever, simple, column,  // 구조
+  shaft, sunkKey, bearing, journal, coupling,  // 축계
+  sectionRect, sectionI, sectionBox, sectionChannel,          // 단면
+  cantilever, simple, fixedBoth, overhang, column,            // 보와 기둥
   bolt, rivet, filletWeld,                     // 체결
   gear, belt,                                  // 전동
+  coil, leaf,                                  // 스프링
+  vessel, fillet, hole, mohr,                  // 압력·응력
   pipe,                                        // 유체
 ]
 
