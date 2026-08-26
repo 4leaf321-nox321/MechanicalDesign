@@ -388,6 +388,8 @@ class WidgetPlacement(db.Model):
                             nullable=True, index=True)
     image_id = db.Column(db.Integer, db.ForeignKey('images.id', ondelete='CASCADE'),
                          nullable=True, index=True)
+    figure_id = db.Column(db.Integer, db.ForeignKey('figures.id', ondelete='CASCADE'),
+                          nullable=True, index=True)
 
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -395,20 +397,28 @@ class WidgetPlacement(db.Model):
     __table_args__ = (
         db.UniqueConstraint('container_id', 'variable_id', name='uq_placement_container_variable'),
         db.UniqueConstraint('container_id', 'image_id', name='uq_placement_container_image'),
+        db.UniqueConstraint('container_id', 'figure_id', name='uq_placement_container_figure'),
+        # 셀 중 정확히 하나. 둘 이상 채워지면 어느 위젯이 보일지
+        # 알 수 없고, 하나도 안 채워지면 아무 데도 안 보이는 행이 남는다.
         db.CheckConstraint(
-            '(variable_id IS NOT NULL AND image_id IS NULL)'
-            ' OR (variable_id IS NULL AND image_id IS NOT NULL)',
+            '(variable_id IS NOT NULL)::int + (image_id IS NOT NULL)::int'
+            ' + (figure_id IS NOT NULL)::int = 1',
             name='ck_placement_exactly_one_target',
         ),
     )
 
     @property
     def kind(self):
-        return 'variable' if self.variable_id is not None else 'image'
+        if self.variable_id is not None:
+            return 'variable'
+        return 'image' if self.image_id is not None else 'figure'
 
     @property
     def widget_id(self):
-        return self.variable_id if self.variable_id is not None else self.image_id
+        for value in (self.variable_id, self.image_id, self.figure_id):
+            if value is not None:
+                return value
+        return None
 
     def to_dict(self):
         return {
@@ -471,3 +481,71 @@ class CardRevision(db.Model):
         except ValueError:
             # 한 행이 깨졌다고 이력 화면 전체가 500 이 되어서는 안 된다.
             return fallback
+
+
+class Figure(db.Model):
+    """도해 — 이 계산이 **어떤 형상**에 대한 것인지 보여 주는 그림.
+
+    올리는 그림이 아니라 **앱이 그리는 그림**이다. 종류(`kind`)와 「도해의 어느
+    치수가 카드의 어느 변수인가」(`mapping`)만 저장하고, 나머지는 그릴 때 계산한다.
+
+    ## 왜 그림 파일을 안 두는가
+
+    파일로 두면 값이 바뀌어도 그림이 안 바뀐다. 이 플랫폼을 쓰는 이유가 변수를
+    움직여 보는 것이니, 그림이 고정이면 첫 변경에서 낡는다. 종류와 배선만 두면
+    **값이 바뀔 때 그림도 따라 바뀐다** — 카드의 수식이 파생값인 것과 같다.
+
+    실물 부품 사진이 필요하면 그건 `Image` 다. 둘은 다른 물건이고 둘 다 있어야
+    한다 — 도해는 유형을, 사진은 실물을 말한다.
+
+    ## mapping
+
+    `{"d": 123, "b": 124}` — 도해가 쓰는 이름 → 변수 id. 기호가 아니라 **id** 로
+    묶는다. 기호로 묶으면 변수 기호를 바꾸는 순간 그림이 조용히 빈다.
+    """
+
+    __tablename__ = 'figures'
+
+    id = db.Column(db.Integer, primary_key=True)
+    card_id = db.Column(db.Integer, db.ForeignKey('cards.id', ondelete='CASCADE'),
+                        nullable=False, index=True)
+
+    kind = db.Column(db.String(40), nullable=False)
+    """어느 도해인가 — 'sunk_key' 같은 것. 그리는 법은 화면이 안다.
+
+    **서버는 종류 목록을 갖지 않는다.** 도해가 늘 때마다 서버를 고쳐야 하면
+    그림 하나 추가에 배포가 걸린다. 서버는 글자로 보관만 하고, 모르는 종류는
+    화면이 「그릴 줄 모르는 도해」 로 말한다.
+    """
+
+    mapping = db.Column(db.Text, nullable=False, default='{}')
+    caption = db.Column(db.String(200), nullable=False, default='')
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    placements = db.relationship(
+        'WidgetPlacement',
+        primaryjoin='Figure.id == WidgetPlacement.figure_id',
+        cascade='all, delete-orphan',
+        lazy='selectin',
+        order_by='WidgetPlacement.sort_order',
+    )
+
+    def mapped(self):
+        try:
+            value = json.loads(self.mapping or '{}')
+            return value if isinstance(value, dict) else {}
+        except ValueError:
+            # 한 도해의 배선이 깨졌다고 카드 전체가 500 이 되어서는 안 된다.
+            return {}
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'card_id': self.card_id,
+            'kind': self.kind,
+            'mapping': self.mapped(),
+            'caption': self.caption or '',
+            'sort_order': self.sort_order,
+            'placements': [p.to_dict() for p in self.placements],
+        }

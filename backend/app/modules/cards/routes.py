@@ -12,7 +12,7 @@ from app.shared.errors import AppError
 from app.modules.orgs import services as org_services
 from app.modules.orgs.models import CardMount, Organization
 from . import duplication, expressions, revisions, tables, validation
-from .models import (Card, CardRevision, Container, Variable, Image,
+from .models import (Card, CardRevision, Container, Figure, Variable, Image,
                      VariableTemplate, WidgetPlacement)
 
 
@@ -1176,6 +1176,95 @@ def delete_variable(card_id, var_id):
 # Images
 # ========================
 
+@cards_bp.route('/<int:card_id>/figures', methods=['GET'])
+def get_figures(card_id):
+    Card.query.get_or_404(card_id)
+    rows = Figure.query.filter_by(card_id=card_id).order_by(Figure.sort_order).all()
+    return jsonify([f.to_dict() for f in rows])
+
+
+def _mapping_of(data, card_id):
+    """도해의 칸 → 변수 id. **이 카드의 변수만** 받는다.
+
+    남의 카드 변수를 묶으면 그 카드를 안 보는 사람에게도 값이 보이고,
+    그 카드가 지워지면 그림이 조용히 빈다.
+    """
+    raw = data.get('mapping')
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError('mapping 은 {칸: 변수id} 형태여야 합니다.')
+
+    mine = {v.id for v in Variable.query.filter_by(card_id=card_id).all()}
+    out = {}
+    for key, value in raw.items():
+        if value in (None, ''):
+            continue
+        try:
+            vid = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{key}' 에 변수 id 가 아닌 값이 왔습니다.")
+        if vid not in mine:
+            raise ValueError(f"'{key}' 에 이 카드의 변수가 아닌 것을 묶었습니다.")
+        out[str(key)] = vid
+    return out
+
+
+@cards_bp.route('/<int:card_id>/figures', methods=['POST'])
+def create_figure(card_id):
+    Card.query.get_or_404(card_id)
+    data = request.get_json() or {}
+
+    kind = (data.get('kind') or '').strip()
+    if not kind:
+        return jsonify({'error': '어느 도해인지 골라 주세요.'}), 400
+
+    try:
+        mapping = _mapping_of(data, card_id)
+    except ValueError as err:
+        return jsonify({'error': str(err)}), 400
+
+    max_order = db.session.query(db.func.max(Figure.sort_order)).filter(
+        Figure.card_id == card_id).scalar() or 0
+
+    row = Figure(card_id=card_id, kind=kind, caption=(data.get('caption') or '').strip(),
+                 mapping=json.dumps(mapping, ensure_ascii=False),
+                 sort_order=max_order + 1)
+    db.session.add(row)
+    db.session.commit()
+    return jsonify(row.to_dict()), 201
+
+
+@cards_bp.route('/<int:card_id>/figures/<int:figure_id>', methods=['PUT'])
+def update_figure(card_id, figure_id):
+    row = Figure.query.filter_by(id=figure_id, card_id=card_id).first_or_404()
+    data = request.get_json() or {}
+
+    if 'kind' in data:
+        kind = (data.get('kind') or '').strip()
+        if not kind:
+            return jsonify({'error': '어느 도해인지 골라 주세요.'}), 400
+        row.kind = kind
+    if 'caption' in data:
+        row.caption = (data.get('caption') or '').strip()
+    if 'mapping' in data:
+        try:
+            row.mapping = json.dumps(_mapping_of(data, card_id), ensure_ascii=False)
+        except ValueError as err:
+            return jsonify({'error': str(err)}), 400
+
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@cards_bp.route('/<int:card_id>/figures/<int:figure_id>', methods=['DELETE'])
+def delete_figure(card_id, figure_id):
+    row = Figure.query.filter_by(id=figure_id, card_id=card_id).first_or_404()
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({'message': '도해를 지웠습니다.'}), 200
+
+
 @cards_bp.route('/<int:card_id>/images', methods=['GET'])
 def get_images(card_id):
     Card.query.get_or_404(card_id)
@@ -1300,7 +1389,8 @@ def update_widget_layout(card_id):
     요청:
       {"containers": [{"container_id": 3,
                        "widgets": [{"kind": "variable", "id": 7},
-                                   {"kind": "image", "id": 2}]}]}
+                                   {"kind": "image", "id": 2},
+                                   {"kind": "figure", "id": 1}]}]}
 
     목록에 없는 위젯은 미배치가 된다(팔레트에만 남는다).
     """
@@ -1313,6 +1403,7 @@ def update_widget_layout(card_id):
     valid_container_ids = {c.id for c in Container.query.filter_by(card_id=card_id).all()}
     valid_variable_ids = {v.id for v in Variable.query.filter_by(card_id=card_id).all()}
     valid_image_ids = {i.id for i in Image.query.filter_by(card_id=card_id).all()}
+    valid_figure_ids = {f.id for f in Figure.query.filter_by(card_id=card_id).all()}
 
     rows = []
     # 같은 컨테이너에 같은 위젯이 두 번 오면 유니크 제약에 걸린다. 그건 클라이언트
@@ -1350,8 +1441,19 @@ def update_widget_layout(card_id):
                 seen.add(key)
                 rows.append(WidgetPlacement(card_id=card_id, container_id=container_id,
                                             image_id=wid, sort_order=index))
+            elif kind == 'figure':
+                if wid not in valid_figure_ids:
+                    return jsonify({'error': f'이 카드의 도해가 아닙니다: {wid}'}), 400
+                key = (container_id, 'f', wid)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(WidgetPlacement(card_id=card_id, container_id=container_id,
+                                            figure_id=wid, sort_order=index))
             else:
-                return jsonify({'error': f"kind 는 variable 또는 image 여야 합니다: {kind}"}), 400
+                return jsonify({
+                    'error': f"kind 는 variable·image·figure 중 하나여야 합니다: {kind}",
+                }), 400
 
     # **검증을 모두 통과한 뒤에 지운다.** 먼저 지우고 넣다가 중간에 400 을 내면
     # 배치가 사라진 채로 끝난다.
