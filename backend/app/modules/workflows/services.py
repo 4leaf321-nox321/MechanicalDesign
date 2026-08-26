@@ -345,7 +345,7 @@ def set_node_inputs(wf, node_id, values):
 def _group_of(wf, group_id):
     group = db.session.get(WorkflowGroup, group_id)
     if group is None or group.workflow_id != wf.id:
-        raise AppError('MD-WF-0130', '그 묶음을 찾을 수 없습니다.', status=404)
+        raise AppError('MD-WF-0150', '그 묶음을 찾을 수 없습니다.', status=404)
     return group
 
 
@@ -362,13 +362,13 @@ def _assign(wf, group, node_ids):
     if node_ids is None:
         return
     if not isinstance(node_ids, (list, tuple)):
-        raise AppError('MD-WF-0131', 'node_ids 는 목록이어야 합니다.')
+        raise AppError('MD-WF-0151', 'node_ids 는 목록이어야 합니다.')
 
     wanted = {int(n) for n in node_ids}
     mine = {n.id for n in wf.nodes}
     stray = wanted - mine
     if stray:
-        raise AppError('MD-WF-0132',
+        raise AppError('MD-WF-0152',
                        f'이 워크플로에 없는 노드가 있습니다: {sorted(stray)}')
 
     for node in wf.nodes:
@@ -562,9 +562,9 @@ def set_iteration(wf, data):
         try:
             value = int(data[key]) if whole else float(data[key])
         except (TypeError, ValueError):
-            raise AppError('MD-WF-0130', f'{key} 에는 숫자를 넣어 주세요.')
+            raise AppError('MD-WF-0135', f'{key} 에는 숫자를 넣어 주세요.')
         if not (low <= value <= high):
-            raise AppError('MD-WF-0131',
+            raise AppError('MD-WF-0136',
                            f'{key} 는 {low} 이상 {high} 이하여야 합니다.')
         return value
 

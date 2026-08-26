@@ -440,14 +440,18 @@ def test_iteration_settings_are_bounded(app, client, chain):
     r = client.put(f"/api/workflows/{wf['id']}", headers=head,
                    json={'iter_max': 100000})
     assert r.status_code == 400
-    assert r.get_json()['code'] == 'MD-WF-0131'
+    assert r.get_json()['code'] == 'MD-WF-0136'
 
     # 완화계수 0 은 값이 영영 안 움직여 「수렴」 처럼 보인다 — 더 나쁜 쪽이다.
     assert client.put(f"/api/workflows/{wf['id']}", headers=head,
                       json={'iter_relaxation': 0}).status_code == 400
 
-    assert client.put(f"/api/workflows/{wf['id']}", headers=head,
-                      json={'iter_tolerance': 'abc'}).status_code == 400
+    # 숫자가 아닌 것과 범위 밖인 것은 **다른 오류다.** 같은 번호를 쓰면
+    # 가져온 쪽이 둘을 가를 수 없다.
+    r = client.put(f"/api/workflows/{wf['id']}", headers=head,
+                   json={'iter_tolerance': 'abc'})
+    assert r.status_code == 400
+    assert r.get_json()['code'] == 'MD-WF-0135'
 
     # 막힌 뒤에도 원래 값 그대로.
     body = client.get(f"/api/workflows/{wf['id']}", headers=head).get_json()
@@ -868,6 +872,17 @@ def test_ungrouping_keeps_the_nodes(app, client, chain):
     assert all(n['group_id'] is None for n in full['nodes'])
 
 
+def test_removing_a_group_that_is_not_there_says_so(app, client, chain):
+    """없는 묶음을 지우는 것과 권한이 없는 것은 다른 일이다.
+
+    둘을 한 번호로 두면, 코드를 보고 무엇을 고쳐야 하는지 정할 수 없다.
+    """
+    head, wf = chain['head'], chain['wf']
+    r = client.delete(f"/api/workflows/{wf['id']}/groups/999999", headers=head)
+    assert r.status_code == 404
+    assert r.get_json()['code'] == 'MD-WF-0150'
+
+
 def test_a_group_cannot_take_a_node_from_another_workflow(app, client, chain):
     """조용히 무시하면 「묶었는데 안 들어갔다」 가 되고, 화면을 새로 고쳐야 안다."""
     head = chain['head']
@@ -878,7 +893,7 @@ def test_a_group_cannot_take_a_node_from_another_workflow(app, client, chain):
 
     r = _group(client, head, wf['id'], '섞기', [n1['id'], outsider['id']])
     assert r.status_code == 400
-    assert r.get_json()['code'] == 'MD-WF-0132'
+    assert r.get_json()['code'] == 'MD-WF-0152'
 
 
 def test_renaming_a_group_keeps_its_members(app, client, chain):
