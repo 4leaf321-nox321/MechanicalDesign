@@ -94,6 +94,52 @@ claude mcp add --transport http mechanicaldesign http://<서버주소>:3010/mcp 
   --header "Authorization: Bearer mdt_..."
 ```
 
+Gemini CLI 는 명령 한 줄이나 설정 파일, 어느 쪽이든 된다:
+
+```bash
+gemini mcp add --transport http mechanicaldesign http://<서버주소>:3010/mcp \
+  --header "Authorization: Bearer mdt_..."
+```
+
+```jsonc
+// ~/.gemini/settings.json (또는 프로젝트의 .gemini/settings.json)
+{
+  "mcpServers": {
+    "mechanicaldesign": {
+      "httpUrl": "http://<서버주소>:3010/mcp",
+      "headers": { "Authorization": "Bearer mdt_..." }
+    }
+  }
+}
+```
+
+`httpUrl` 이어야 한다 — `url` 은 옛 SSE 전송용 키라서 이 서버(streamable-http)와
+맞지 않는다.
+
+### 손으로 확인하는 법 — 406 은 고장이 아니다
+
+브라우저나 Postman 으로 찔러 보면 이런 응답이 온다:
+
+    Not Acceptable: Client must accept both application/json and text/event-stream
+
+**규격이 요구하는 동작이다.** streamable-http 서버는 요청마다 응답을 단발
+JSON 으로 줄지 SSE 스트림으로 줄지 고를 수 있어서, 클라이언트가 **둘 다 받을
+수 있다고 미리 선언해야**(`Accept` 헤더) 대화가 성립한다. MCP 클라이언트는
+이 헤더를 알아서 붙이므로, 이 에러가 보였다면 그 요청은 MCP 클라이언트가
+아니라 일반 HTTP 도구에서 온 것이다.
+
+살았는지 손으로 확인하려면 규격대로 보내면 된다:
+
+```bash
+curl -s -X POST http://<서버주소>:3010/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}'
+```
+
+`serverInfo` 가 담긴 200 이 오면 정상이다. `MCP_JSON_RESPONSE=1` 로 띄운
+서버는 단발 JSON 으로만 답하므로 `Accept: application/json` 만으로도 받는다.
+
 ## 사용 안내는 서버가 준다 — 깔 것이 없다
 
 도구 선택·절차·수식 문법 같은 안내는 **서버가 쥐고**(`guide/GUIDE.md`)
