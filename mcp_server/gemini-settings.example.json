@@ -1,0 +1,13 @@
+{
+  "_안내": "Gemini CLI 등록 예시. ~/.gemini/settings.json (전역) 또는 프로젝트의 .gemini/settings.json 에 mcpServers 부분을 합쳐 넣는다.",
+  "_주의": "키는 httpUrl 이어야 한다 — url 은 옛 SSE 전송용 키라 이 서버(streamable-http)와 맞지 않는다. 토큰은 앱의 /tokens 화면에서 발급받는다.",
+  "mcpServers": {
+    "mechanicaldesign": {
+      "httpUrl": "http://<서버주소>:3010/mcp",
+      "headers": {
+        "Authorization": "Bearer mdt_여기에_발급받은_토큰"
+      },
+      "timeout": 30000
+    }
+  }
+}

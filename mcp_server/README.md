@@ -114,7 +114,7 @@ gemini mcp add --transport http mechanicaldesign http://<서버주소>:3010/mcp 
 ```
 
 `httpUrl` 이어야 한다 — `url` 은 옛 SSE 전송용 키라서 이 서버(streamable-http)와
-맞지 않는다.
+맞지 않는다. 그대로 복사할 예시가 [gemini-settings.example.json](gemini-settings.example.json) 에 있다.
 
 ### 손으로 확인하는 법 — 406 은 고장이 아니다
 
