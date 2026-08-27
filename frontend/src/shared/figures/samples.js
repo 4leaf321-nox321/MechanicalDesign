@@ -46,4 +46,8 @@ export const SAMPLE = {
   hinge_torque: { W: 15, Lg: 120, theta: 105, Tf: 2000 },
   press_fit: { d: 20, delta: 0.03, D: 40, L: 25 },
   gasket_seal: { h0: 12, h: 9, w: 10 },
+  tol_stack: { n: 5, t: 0.1, g: 0.35 },
+  draft_angle: { H: 30, theta: 1, w: 60 },
+  // 플라스틱(70)과 알루미늄(23). TV 데코가 여름·겨울에 미는 그 조합이다.
+  thermal_gap: { L: 1000, dT: 30, a1: 70, a2: 23 },
 }

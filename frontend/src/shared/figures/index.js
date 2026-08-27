@@ -23,6 +23,7 @@ import gear from './gear'
 import hinge from './hinge'
 import journal from './journal'
 import mohr from './mohr'
+import draftAngle from './draftAngle'
 import drop from './drop'
 import finArray from './finArray'
 import { fillet, hole } from './notch'
@@ -38,6 +39,8 @@ import shaft from './shaft'
 import snapFit from './snapFit'
 import { coil, leaf } from './spring'
 import sunkKey from './sunkKey'
+import thermalGap from './thermalGap'
+import tolStack from './tolStack'
 import vessel from './vessel'
 import vibMount from './vibMount'
 
@@ -52,6 +55,7 @@ const ALL = [
   vessel, fillet, hole, mohr,                  // 압력·응력
   snapFit, rib, boss, drop, finArray, vibMount,  // 기구 — 가전·전자기기
   hinge, pressFit, gasket,                     // 기구 — 힌지·압입·실링
+  tolStack, draftAngle, thermalGap,            // 기구 — 공차·성형·온도
   pipe,                                        // 유체
 ]
 
