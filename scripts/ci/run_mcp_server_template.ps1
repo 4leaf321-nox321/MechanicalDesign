@@ -117,10 +117,28 @@ if ($env:MCP_HOST -eq '0.0.0.0') {
     # **바인딩 주소는 남이 쓸 주소가 아니다.** 그리고 이 기계에서 localhost 로
     # 확인해 보는 것은 아무것도 증명하지 못한다 — 바인딩이 무엇이든 답한다.
     # 그래서 남이 실제로 칠 수 있는 주소를 찾아 찍어 준다.
-    $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
-        Select-Object -First 1).IPAddress
-    if ($ip) { Write-Host "붙는 주소  : http://${ip}:$($env:MCP_PORT)/mcp  (다른 PC 에서 확인하세요)" }
+    #
+    # **물리 어댑터부터 본다.** 아무 IPv4 나 첫 번째를 집으면 Hyper-V·WSL 의
+    # 가상 어댑터(172.16~31 대역의 vEthernet)가 먼저 잡히는 기계가 많고, 그
+    # 주소는 이 기계 자신과 WSL 안에서만 통한다 — 「다른 PC 에서 확인하세요」
+    # 라고 적어 놓고 다른 PC 에서 안 붙는 주소를 준 셈이 된다. 실제 운영기에서
+    # 그렇게 찍혔다. VM 게스트 안에서도 게스트의 NIC 은 물리로 보이므로 이
+    # 필터가 통하고, 혹시 하나도 없으면 예전처럼 전부에서 고르되 다 보여 준다 —
+    # 어느 것이 사내망 주소인지는 목록을 본 사람이 안다.
+    $physical = Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+        Where-Object Status -eq 'Up' |
+        Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' }
+    $candidates = if ($physical) { $physical } else {
+        Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' }
+    }
+    foreach ($cand in $candidates) {
+        Write-Host "붙는 주소  : http://$($cand.IPAddress):$($env:MCP_PORT)/mcp  ($($cand.InterfaceAlias))"
+    }
+    if (-not $physical -and $candidates) {
+        Write-Host "물리 어댑터를 찾지 못해 전부 보였습니다 — vEthernet 은 이 기계 안에서만 통합니다."
+    }
     Write-Host "방화벽에 인바운드 TCP $($env:MCP_PORT) 가 열려 있어야 합니다."
 } else {
     Write-Warning "MCP_HOST 가 $env:MCP_HOST 입니다 — 이 기계에서만 붙을 수 있습니다."
